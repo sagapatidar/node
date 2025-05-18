@@ -1646,7 +1646,7 @@ void MacroAssembler::LeaveExitFrame(Register scratch) {
   LoadU64(cp, ExternalReferenceAsOperand(context_address, no_reg));
 
 #ifdef DEBUG
-  mov(scratch, Operand(Context::kInvalidContext));
+  mov(scratch, Operand(Context::kNoContext));
   StoreU64(scratch, ExternalReferenceAsOperand(context_address, no_reg));
 #endif
 
@@ -5213,7 +5213,9 @@ void MacroAssembler::LoadEntrypointFromJSDispatchTable(Register destination,
   ASM_CODE_COMMENT(this);
 
   Register index = destination;
-  Move(scratch, ExternalReference::js_dispatch_table_address());
+  CHECK(root_array_available());
+  LoadU64(scratch,
+          ExternalReferenceAsOperand(IsolateFieldId::kJSDispatchTable));
   ShiftRightU64(index, dispatch_handle, Operand(kJSDispatchHandleShift));
   ShiftLeftU64(index, index, Operand(kJSDispatchTableEntrySizeLog2));
   AddS64(scratch, scratch, index);

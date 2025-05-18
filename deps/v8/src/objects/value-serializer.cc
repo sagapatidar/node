@@ -1528,7 +1528,8 @@ Maybe<base::Vector<const uint8_t>> ValueDeserializer::ReadRawBytes(
 
 Maybe<base::Vector<const base::uc16>> ValueDeserializer::ReadRawTwoBytes(
     size_t size) {
-  if (size > static_cast<size_t>(end_ - position_) ||
+  if (!IsAligned(reinterpret_cast<uintptr_t>(position_), 2) ||
+      size > static_cast<size_t>(end_ - position_) ||
       size % sizeof(base::uc16) != 0) {
     return Nothing<base::Vector<const base::uc16>>();
   }
@@ -1934,7 +1935,8 @@ MaybeDirectHandle<JSDate> ValueDeserializer::ReadJSDate() {
   if (!ReadDouble().To(&value)) return MaybeDirectHandle<JSDate>();
   uint32_t id = next_id_++;
   DirectHandle<JSDate> date;
-  if (!JSDate::New(isolate_->date_function(), isolate_->date_function(), value)
+  if (!JSDate::New(isolate_, isolate_->date_function(),
+                   isolate_->date_function(), value)
            .ToHandle(&date)) {
     return MaybeDirectHandle<JSDate>();
   }

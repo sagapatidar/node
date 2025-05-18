@@ -555,10 +555,6 @@ FUNCTION_REFERENCE(allocate_and_initialize_young_external_pointer_table_entry,
 
 FUNCTION_REFERENCE(get_date_field_function, JSDate::GetField)
 
-ExternalReference ExternalReference::date_cache_stamp(Isolate* isolate) {
-  return ExternalReference(isolate->date_cache()->stamp_address());
-}
-
 // static
 ExternalReference
 ExternalReference::runtime_function_table_address_for_unittests(
@@ -1446,6 +1442,12 @@ FUNCTION_REFERENCE(global_dictionary_lookup_forwarded_string,
 FUNCTION_REFERENCE(global_dictionary_find_insertion_entry_forwarded_string,
                    (NameDictionaryLookupForwardedStringWithHandle<
                        GlobalDictionary, kFindInsertionEntry>))
+FUNCTION_REFERENCE(simple_name_dictionary_lookup_forwarded_string,
+                   (NameDictionaryLookupForwardedStringWithHandle<
+                       SimpleNameDictionary, kFindExisting>))
+FUNCTION_REFERENCE(simple_name_dictionary_find_insertion_entry_forwarded_string,
+                   (NameDictionaryLookupForwardedStringWithHandle<
+                       SimpleNameDictionary, kFindInsertionEntry>))
 
 template <typename Dictionary, LookupMode mode>
 static size_t NameDictionaryLookupForwardedString(Isolate* isolate,

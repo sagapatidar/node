@@ -294,6 +294,8 @@ class V8_EXPORT_PRIVATE MaglevAssembler : public MacroAssembler {
       RegisterSnapshot& register_snapshot, Register result, Register string,
       Register index, Register scratch1, Register scratch2,
       Label* result_fits_one_byte);
+  void SeqOneByteStringCharCodeAt(Register result, Register string,
+                                  Register index);
   // Warning: Input {char_code} will be scratched.
   void StringFromCharCode(RegisterSnapshot register_snapshot,
                           Label* char_code_fits_one_byte, Register result,
@@ -545,10 +547,15 @@ class V8_EXPORT_PRIVATE MaglevAssembler : public MacroAssembler {
   inline void JumpIfStringMap(Register map, Label* target,
                               Label::Distance distance = Label::kFar,
                               bool jump_if_true = true);
+  inline void JumpIfSeqOneByteStringMap(Register map, Label* target,
+                                        Label::Distance distance = Label::kFar,
+                                        bool jump_if_true = true);
   inline void JumpIfString(Register heap_object, Label* target,
                            Label::Distance distance = Label::kFar);
   inline void JumpIfNotString(Register heap_object, Label* target,
                               Label::Distance distance = Label::kFar);
+  inline void JumpIfNotSeqOneByteString(Register heap_object, Label* target,
+                                        Label::Distance distance = Label::kFar);
   inline void CheckJSAnyIsStringAndBranch(Register heap_object, Label* if_true,
                                           Label::Distance true_distance,
                                           bool fallthrough_when_true,
@@ -639,6 +646,11 @@ class V8_EXPORT_PRIVATE MaglevAssembler : public MacroAssembler {
   inline void JumpIfByte(Condition cc, Register value, int32_t byte,
                          Label* target, Label::Distance distance = Label::kFar);
 
+#ifdef V8_ENABLE_EXPERIMENTAL_UNDEFINED_DOUBLE
+  inline void JumpIfNotUndefinedNan(DoubleRegister value, Register scratch,
+                                    Label* target,
+                                    Label::Distance distance = Label::kFar);
+#endif  // V8_ENABLE_EXPERIMENTAL_UNDEFINED_DOUBLE
   inline void JumpIfHoleNan(DoubleRegister value, Register scratch,
                             Label* target,
                             Label::Distance distance = Label::kFar);

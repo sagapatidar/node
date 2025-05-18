@@ -218,6 +218,9 @@ VisitorId Map::GetVisitorId(Tagged<Map> map) {
     case JS_TYPED_ARRAY_TYPE:
       return kVisitJSTypedArray;
 
+    case DOUBLE_STRING_CACHE_TYPE:
+      return kVisitDoubleStringCache;
+
     case SMALL_ORDERED_HASH_MAP_TYPE:
       return kVisitSmallOrderedHashMap;
 
@@ -291,7 +294,7 @@ VisitorId Map::GetVisitorId(Tagged<Map> map) {
     case JS_SHARED_STRUCT_TYPE:
     case JS_STRING_ITERATOR_PROTOTYPE_TYPE:
     case JS_STRING_ITERATOR_TYPE:
-    case JS_TEMPORAL_CALENDAR_TYPE:
+#ifdef V8_TEMPORAL_SUPPORT
     case JS_TEMPORAL_DURATION_TYPE:
     case JS_TEMPORAL_INSTANT_TYPE:
     case JS_TEMPORAL_PLAIN_DATE_TYPE:
@@ -301,6 +304,7 @@ VisitorId Map::GetVisitorId(Tagged<Map> map) {
     case JS_TEMPORAL_PLAIN_YEAR_MONTH_TYPE:
     case JS_TEMPORAL_TIME_ZONE_TYPE:
     case JS_TEMPORAL_ZONED_DATE_TIME_TYPE:
+#endif  // V8_TEMPORAL_SUPPORT
     case JS_TYPED_ARRAY_PROTOTYPE_TYPE:
     case JS_VALID_ITERATOR_WRAPPER_TYPE:
     case JS_RAW_JSON_TYPE:
@@ -462,6 +466,8 @@ VisitorId Map::GetVisitorId(Tagged<Map> map) {
       return kVisitWasmDescriptorOptions;
     case WASM_SUSPENDER_OBJECT_TYPE:
       return kVisitWasmSuspenderObject;
+    case WASM_CONTINUATION_OBJECT_TYPE:
+      return kVisitWasmContinuationObject;
     case WASM_SUSPENDING_OBJECT_TYPE:
       return kVisitWasmSuspendingObject;
     case WASM_TABLE_OBJECT_TYPE:

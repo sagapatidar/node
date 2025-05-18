@@ -4637,9 +4637,9 @@ class Handlers : public HandlersBase {
     Simd128 s = pop<Simd128>(sp, code, wasm_runtime);                          \
     stype ss = s.to_##name();                                                  \
     auto res = ss.val[LANE(lane, ss)];                                         \
-    DCHECK(std::is_signed<decltype(res)>::value);                              \
-    if (std::is_unsigned<extended_type>::value) {                              \
-      using unsigned_type = std::make_unsigned<decltype(res)>::type;           \
+    DCHECK(std::is_signed_v<decltype(res)>);                                   \
+    if (std::is_unsigned_v<extended_type>) {                                   \
+      using unsigned_type = std::make_unsigned_t<decltype(res)>;               \
       push(sp, code, wasm_runtime,                                             \
            static_cast<extended_type>(static_cast<unsigned_type>(res)));       \
     } else {                                                                   \
@@ -5563,7 +5563,7 @@ class Handlers : public HandlersBase {
   INSTRUCTION_HANDLER_FUNC s2s_Throw(const uint8_t* code, uint32_t* sp,
                                      WasmInterpreterRuntime* wasm_runtime,
                                      int64_t r0, double fp0) {
-    Isolate* isolate = wasm_runtime->GetIsolate();
+    Isolate* isolate = Isolate::Current();
     {
       HandleScope handle_scope(isolate);  // Avoid leaking handles.
 
@@ -6096,7 +6096,7 @@ class Handlers : public HandlersBase {
     Address field_addr = (*struct_obj).ptr() + offset;
     // DrumBrake expects pointer compression.
     Tagged_t ref_tagged = base::ReadUnalignedValue<uint32_t>(field_addr);
-    Isolate* isolate = wasm_runtime->GetIsolate();
+    Isolate* isolate = Isolate::Current();
     Tagged<Object> ref_uncompressed(
         V8HeapCompressionScheme::DecompressTagged(ref_tagged));
     WasmRef ref_handle = handle(ref_uncompressed, isolate);

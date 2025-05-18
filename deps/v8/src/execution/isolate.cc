@@ -634,9 +634,7 @@ void Isolate::Iterate(RootVisitor* v, ThreadLocalTop* thread) {
     if (stack->IsActive()) {
       continue;
     }
-    for (StackFrameIterator it(this, stack.get()); !it.done(); it.Advance()) {
-      it.frame()->Iterate(v);
-    }
+    stack->Iterate(v, this);
   }
   StackFrameIterator it(this, thread, StackFrameIterator::FirstStackOnly{});
 #else
@@ -4231,9 +4229,8 @@ Isolate::Isolate(IsolateGroup* isolate_group)
   // we could also just move it to the trap handler, and implement it e.g. with
   // inline assembly. It's not clear if that's worth it.
   if (Isolate::CurrentEmbeddedBlobCodeSize()) {
-    EmbeddedData embedded_data = EmbeddedData::FromBlob();
     Address landing_pad =
-        embedded_data.InstructionStartOf(Builtin::kWasmTrapHandlerLandingPad);
+        Builtins::EmbeddedEntryOf(Builtin::kWasmTrapHandlerLandingPad);
     i::trap_handler::SetLandingPad(landing_pad);
   }
 #endif  // V8_ENABLE_WEBASSEMBLY
@@ -4333,6 +4330,10 @@ void Isolate::CheckIsolateLayout() {
       static_cast<int>(OFFSET_OF(
           Isolate, isolate_data_.continuation_preserved_embedder_data_)) ==
       Internals::kContinuationPreservedEmbedderDataOffset);
+
+  static_assert(static_cast<int>(OFFSET_OF(
+                    Isolate, isolate_data_.js_dispatch_table_base_)) ==
+                Internals::kJSDispatchTableOffset);
 
   static_assert(
       static_cast<int>(OFFSET_OF(Isolate, isolate_data_.roots_table_)) ==
@@ -4614,7 +4615,7 @@ void Isolate::Deinit() {
   external_pointer_table().TearDownSpace(
       heap()->young_external_pointer_space());
   external_pointer_table().TearDownSpace(heap()->old_external_pointer_space());
-  external_pointer_table().DetachSpaceFromReadOnlySegment(
+  external_pointer_table().DetachSpaceFromReadOnlySegments(
       heap()->read_only_external_pointer_space());
   external_pointer_table().TearDownSpace(
       heap()->read_only_external_pointer_space());
@@ -4760,6 +4761,8 @@ Isolate::~Isolate() {
 
   delete allocator_;
   allocator_ = nullptr;
+
+  DCHECK_NULL(builtins_effects_analyzer_);
 
   // Assert that |default_microtask_queue_| is the last MicrotaskQueue instance.
   DCHECK_IMPLIES(default_microtask_queue_,
@@ -5431,6 +5434,8 @@ void Isolate::VerifyStaticRoots() {
                InstanceTypeChecker::IsOneByteString(map->instance_type()));
       CHECK_EQ(InstanceTypeChecker::IsTwoByteString(map),
                InstanceTypeChecker::IsTwoByteString(map->instance_type()));
+      CHECK_EQ(InstanceTypeChecker::IsSharedString(map),
+               InstanceTypeChecker::IsSharedString(map->instance_type()));
     }
   }
 
@@ -5598,7 +5603,7 @@ bool Isolate::Init(SnapshotData* startup_snapshot_data,
     external_pointer_table().Initialize();
     external_pointer_table().InitializeSpace(
         heap()->read_only_external_pointer_space());
-    external_pointer_table().AttachSpaceToReadOnlySegment(
+    external_pointer_table().AttachSpaceToReadOnlySegments(
         heap()->read_only_external_pointer_space());
     external_pointer_table().InitializeSpace(
         heap()->young_external_pointer_space());
@@ -6065,6 +6070,11 @@ void Isolate::DumpAndResetStats() {
     wasm::GetWasmEngine()->DumpAndResetTurboStatistics();
   }
 #endif  // V8_ENABLE_WEBASSEMBLY
+
+  if (v8_flags.trace_number_string_cache) {
+    PrintNumberStringCacheStats("DumpAndResetStats", true);
+  }
+
 #if V8_RUNTIME_CALL_STATS
   if (V8_UNLIKELY(TracingFlags::runtime_stats.load(std::memory_order_relaxed) ==
                   v8::tracing::TracingCategoryObserver::ENABLED_BY_NATIVE)) {
@@ -6223,6 +6233,23 @@ void Isolate::set_date_cache(DateCache* date_cache) {
     delete date_cache_;
   }
   date_cache_ = date_cache;
+}
+
+void Isolate::IncreaseDateCacheStampAndInvalidateProtector() {
+  // There's no need to update stamp and invalidate the protector since there
+  // were no JSDate instances created yet and thus such a configuration change
+  // is not observable anyway.
+  if (!isolate_data()->is_date_cache_used_) return;
+
+  if (isolate_data()->date_cache_stamp_ < Smi::kMaxValue) {
+    ++isolate_data()->date_cache_stamp_;
+  } else {
+    isolate_data()->date_cache_stamp_ = 1;
+  }
+
+  if (Protectors::IsNoDateTimeConfigurationChangeIntact(this)) {
+    Protectors::InvalidateNoDateTimeConfigurationChange(this);
+  }
 }
 
 Isolate::KnownPrototype Isolate::IsArrayOrObjectOrStringPrototype(
@@ -7716,6 +7743,76 @@ void Isolate::InitializeBuiltinJSDispatchTable() {
     }
   }
 #endif
+}
+
+void Isolate::PrintNumberStringCacheStats(const char* comment,
+                                          bool final_summary) {
+#define FETCH_COUNTER(name) \
+  uint32_t name = static_cast<uint32_t>(counters()->name()->Get());
+
+  FETCH_COUNTER(write_barriers)
+  FETCH_COUNTER(number_string_cache_smi_probes)
+  FETCH_COUNTER(number_string_cache_smi_misses)
+  FETCH_COUNTER(number_string_cache_double_probes)
+  FETCH_COUNTER(number_string_cache_double_misses)
+#undef FETCH_COUNTER
+
+  PrintF("=== NumberToString cache usage stats (%s):\n", comment);
+  if (final_summary && write_barriers == 0) {
+    // If write barriers count is zero, then it's most likely because
+    // builtins are compiled without --native-code-counters.
+    PrintF(
+        "=== WARNING: empty stats! Ensure gn args contain: "
+        "`v8_enable_snapshot_native_code_counters = true`\n");
+  }
+  double smi_miss_rate =
+      number_string_cache_smi_probes
+          ? static_cast<double>(number_string_cache_smi_misses) /
+                number_string_cache_smi_probes
+          : 0;
+
+  double double_miss_rate =
+      number_string_cache_double_probes
+          ? static_cast<double>(number_string_cache_double_misses) /
+                number_string_cache_double_probes
+          : 0;
+
+  PrintF("=== SmiStringCache miss rate:    %.6f (%d / %d)\n",  //
+         smi_miss_rate, number_string_cache_smi_misses,
+         number_string_cache_smi_probes);
+  PrintF("=== DoubleStringCache miss rate: %.6f (%d / %d)\n",  //
+         double_miss_rate, number_string_cache_double_misses,
+         number_string_cache_double_probes);
+
+  uint32_t smi_string_cache_capacity =
+      factory()->smi_string_cache()->capacity();
+  uint32_t smi_string_used_entries =
+      factory()->smi_string_cache()->GetUsedEntriesCount();
+
+  uint32_t double_string_cache_capacity =
+      factory()->double_string_cache()->capacity();
+  uint32_t double_string_used_entries =
+      factory()->double_string_cache()->GetUsedEntriesCount();
+
+  double smi_cache_utilization_rate =
+      static_cast<double>(smi_string_used_entries) / smi_string_cache_capacity;
+  double double_cache_utilization_rate =
+      static_cast<double>(double_string_used_entries) /
+      double_string_cache_capacity;
+  PrintF("=== SmiStringCache utilization:    %.6f (%d / %d)\n",  //
+         smi_cache_utilization_rate, smi_string_used_entries,
+         smi_string_cache_capacity);
+  PrintF("=== DoubleStringCache utilization: %.6f (%d / %d)\n",  //
+         double_cache_utilization_rate, double_string_used_entries,
+         double_string_cache_capacity);
+
+  if (final_summary) {
+    PrintF("=== --smi-string-cache-size=%d\n",
+           v8_flags.smi_string_cache_size.value());
+    PrintF("=== --double-string-cache-size=%d\n",
+           v8_flags.double_string_cache_size.value());
+  }
+  PrintF("\n");
 }
 
 }  // namespace internal

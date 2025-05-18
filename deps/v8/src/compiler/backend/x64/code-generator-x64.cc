@@ -528,8 +528,15 @@ int EmitStore(MacroAssembler* masm, Operand operand, Register value,
       masm->xchgq(kScratchRegister, operand);
       break;
     case MachineRepresentation::kTagged:
-      store_instr_offset = masm->pc_offset();
-      masm->AtomicStoreTaggedField(operand, value);
+      if (COMPRESS_POINTERS_BOOL) {
+        masm->movl(kScratchRegister, value);
+        store_instr_offset = masm->pc_offset();
+        masm->xchgl(kScratchRegister, operand);
+      } else {
+        masm->movq(kScratchRegister, value);
+        store_instr_offset = masm->pc_offset();
+        masm->xchgq(kScratchRegister, operand);
+      }
       break;
     default:
       UNREACHABLE();
@@ -1344,8 +1351,8 @@ void SetupSimdImmediateInRegister(MacroAssembler* assembler, uint32_t* imms,
 
 void SetupSimd256ImmediateInRegister(MacroAssembler* assembler, uint32_t* imms,
                                      YMMRegister reg, XMMRegister scratch) {
-  bool is_splat = std::all_of(imms, imms + kSimd256Size,
-                              [imms](uint32_t v) { return v == imms[0]; });
+  bool is_splat =
+      std::all_of(imms, imms + 8, [imms](uint32_t v) { return v == imms[0]; });
   if (is_splat) {
     assembler->Move(scratch, imms[0]);
     CpuFeatureScope avx_scope(assembler, AVX2);

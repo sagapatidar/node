@@ -363,6 +363,10 @@ class SharedFunctionInfo
   // with an isolate parameter if possible.
   inline Tagged<Object> GetTrustedData() const;
 
+  // Some code may encounter unreachable unusable objects and needs to skip
+  // over them without crashing.
+  inline bool HasUnpublishedTrustedData(IsolateForSandbox isolate) const;
+
  private:
   // For the sandbox, the function's data is split across two fields, with the
   // "trusted" part containing a trusted pointer and the regular/untrusted part
@@ -886,6 +890,22 @@ class V8_NODISCARD IsCompiledScope {
 
  private:
   MaybeHandle<HeapObject> retain_code_ = {};
+  bool is_compiled_ = false;
+};
+
+// IsBaselineCompiledScope enables a caller to check if a function is baseline
+// compiled, and ensure it remains compiled (i.e., doesn't have it's baseline
+// code flushed) while the scope is retained.
+class V8_NODISCARD IsBaselineCompiledScope {
+ public:
+  inline IsBaselineCompiledScope(const Tagged<SharedFunctionInfo> shared,
+                                 Isolate* isolate);
+  inline IsBaselineCompiledScope() = default;
+
+  inline bool is_compiled() const { return is_compiled_; }
+
+ private:
+  MaybeHandle<Code> retain_code_ = {};
   bool is_compiled_ = false;
 };
 

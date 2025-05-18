@@ -2199,7 +2199,7 @@ TEST(TestAlignedAllocation) {
     // Make one allocation to force allocating an allocation area. Using
     // kDoubleSize to not change space alignment
     USE(allocator->AllocateRaw(kDoubleSize, kDoubleAligned,
-                               AllocationOrigin::kRuntime));
+                               AllocationOrigin::kRuntime, AllocationHint()));
 
     // Allocate a pointer sized object that must be double aligned at an
     // aligned address.
@@ -2277,7 +2277,8 @@ TEST(TestAlignedOverAllocation) {
   // Allocate a dummy object to properly set up the linear allocation info.
   AllocationResult dummy =
       heap->allocator()->old_space_allocator()->AllocateRaw(
-          kTaggedSize, kTaggedAligned, AllocationOrigin::kRuntime);
+          kTaggedSize, kTaggedAligned, AllocationOrigin::kRuntime,
+          AllocationHint());
   CHECK(!dummy.IsFailure());
   heap->CreateFillerObjectAt(dummy.ToObjectChecked().address(), kTaggedSize);
 
@@ -2327,8 +2328,8 @@ TEST(HeapNumberAlignment) {
   Heap* heap = isolate->heap();
   HandleScope sc(isolate);
 
-  const auto required_alignment =
-      HeapObject::RequiredAlignment(*factory->heap_number_map());
+  const auto required_alignment = HeapObject::RequiredAlignment(
+      kNotInSharedSpace, *factory->heap_number_map());
   const int maximum_misalignment =
       Heap::GetMaximumFillToAlign(required_alignment);
 
@@ -4105,7 +4106,7 @@ TEST(Regress169928) {
   AllocationResult allocation =
       CcTest::heap()->allocator()->new_space_allocator()->AllocateRaw(
           sizeof(AllocationMemento) + kTaggedSize, kTaggedAligned,
-          AllocationOrigin::kRuntime);
+          AllocationOrigin::kRuntime, AllocationHint());
   CHECK(allocation.To(&obj));
   Address addr_obj = obj.address();
   CcTest::heap()->CreateFillerObjectAt(addr_obj,
@@ -5398,8 +5399,9 @@ HEAP_TEST(NumberStringCacheSize) {
   Isolate* isolate = CcTest::i_isolate();
   if (!isolate->snapshot_available()) return;
   Heap* heap = isolate->heap();
-  CHECK_EQ(Heap::kInitialNumberStringCacheSize * 2,
-           heap->number_string_cache()->length());
+  CHECK_EQ(SmiStringCache::kInitialSize, heap->smi_string_cache()->capacity());
+  CHECK_EQ(DoubleStringCache::kInitialSize,
+           heap->double_string_cache()->capacity());
 }
 
 TEST(Regress3877) {

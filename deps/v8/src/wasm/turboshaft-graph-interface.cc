@@ -175,7 +175,7 @@ OpIndex WasmGraphBuilderBase::CallRuntime(
 }
 
 OpIndex WasmGraphBuilderBase::GetBuiltinPointerTarget(Builtin builtin) {
-  static_assert(std::is_same<Smi, BuiltinPtr>(), "BuiltinPtr must be Smi");
+  static_assert(std::is_same_v<Smi, BuiltinPtr>, "BuiltinPtr must be Smi");
   return __ SmiConstant(Smi::FromInt(static_cast<int>(builtin)));
 }
 
@@ -2258,8 +2258,7 @@ class TurboshaftGraphBuildingInterface : public WasmGraphBuilderBase {
 #if DEBUG
     // Reset the context again after the call, to make sure nobody is using the
     // leftover context in the isolate.
-    __ Store(__ LoadRootRegister(),
-             __ WordPtrConstant(Context::kInvalidContext),
+    __ Store(__ LoadRootRegister(), __ WordPtrConstant(Context::kNoContext),
              StoreOp::Kind::RawAligned(), MemoryRepresentation::UintPtr(),
              compiler::kNoWriteBarrier, Isolate::context_offset());
 #endif
@@ -4605,7 +4604,20 @@ class TurboshaftGraphBuildingInterface : public WasmGraphBuilderBase {
         field.struct_imm.struct_type, field.struct_imm.index,
         field.field_imm.index, is_signed,
         struct_object.type.is_nullable() ? compiler::kWithNullCheck
-                                         : compiler::kWithoutNullCheck);
+                                         : compiler::kWithoutNullCheck,
+        {});
+  }
+
+  void StructAtomicGet(FullDecoder* decoder, const Value& struct_object,
+                       const FieldImmediate& field, bool is_signed,
+                       AtomicMemoryOrder memory_order, Value* result) {
+    result->op = __ StructGet(
+        V<WasmStructNullable>::Cast(struct_object.op),
+        field.struct_imm.struct_type, field.struct_imm.index,
+        field.field_imm.index, is_signed,
+        struct_object.type.is_nullable() ? compiler::kWithNullCheck
+                                         : compiler::kWithoutNullCheck,
+        memory_order);
   }
 
   void StructSet(FullDecoder* decoder, const Value& struct_object,
@@ -4613,9 +4625,20 @@ class TurboshaftGraphBuildingInterface : public WasmGraphBuilderBase {
     __ StructSet(V<WasmStructNullable>::Cast(struct_object.op), field_value.op,
                  field.struct_imm.struct_type, field.struct_imm.index,
                  field.field_imm.index,
-                 struct_object.type.is_nullable()
-                     ? compiler::kWithNullCheck
-                     : compiler::kWithoutNullCheck);
+                 struct_object.type.is_nullable() ? compiler::kWithNullCheck
+                                                  : compiler::kWithoutNullCheck,
+                 {});
+  }
+
+  void StructAtomicSet(FullDecoder* decoder, const Value& struct_object,
+                       const FieldImmediate& field, const Value& field_value,
+                       AtomicMemoryOrder memory_order) {
+    __ StructSet(V<WasmStructNullable>::Cast(struct_object.op), field_value.op,
+                 field.struct_imm.struct_type, field.struct_imm.index,
+                 field.field_imm.index,
+                 struct_object.type.is_nullable() ? compiler::kWithNullCheck
+                                                  : compiler::kWithoutNullCheck,
+                 memory_order);
   }
 
   void ArrayNew(FullDecoder* decoder, const ArrayIndexImmediate& imm,
@@ -4639,7 +4662,17 @@ class TurboshaftGraphBuildingInterface : public WasmGraphBuilderBase {
     auto array_value = V<WasmArrayNullable>::Cast(array_obj.op);
     BoundsCheckArray(array_value, index.op, array_obj.type);
     result->op = __ ArrayGet(array_value, V<Word32>::Cast(index.op),
-                             imm.array_type, is_signed);
+                             imm.array_type, is_signed, {});
+  }
+
+  void ArrayAtomicGet(FullDecoder* decoder, const Value& array_obj,
+                      const ArrayIndexImmediate& imm, const Value& index,
+                      bool is_signed, AtomicMemoryOrder memory_order,
+                      Value* result) {
+    auto array_value = V<WasmArrayNullable>::Cast(array_obj.op);
+    BoundsCheckArray(array_value, index.op, array_obj.type);
+    result->op = __ ArrayGet(array_value, V<Word32>::Cast(index.op),
+                             imm.array_type, is_signed, memory_order);
   }
 
   void ArraySet(FullDecoder* decoder, const Value& array_obj,
@@ -4725,7 +4758,7 @@ class TurboshaftGraphBuildingInterface : public WasmGraphBuilderBase {
 
           WHILE(__ Word32Constant(1)) {
             V<Any> value = __ ArrayGet(src_array, src_index_loop,
-                                       src_imm.array_type, true);
+                                       src_imm.array_type, true, {});
             __ ArraySet(dst_array, dst_index_loop, value, element_type);
 
             IF_NOT (__ Uint32LessThan(src_index.op, src_index_loop)) BREAK;
@@ -4739,7 +4772,7 @@ class TurboshaftGraphBuildingInterface : public WasmGraphBuilderBase {
 
           WHILE(__ Word32Constant(1)) {
             V<Any> value = __ ArrayGet(src_array, src_index_loop,
-                                       src_imm.array_type, true);
+                                       src_imm.array_type, true, {});
             __ ArraySet(dst_array, dst_index_loop, value, element_type);
 
             IF_NOT (__ Uint32LessThan(src_index_loop, src_end_index)) BREAK;
@@ -4852,7 +4885,7 @@ class TurboshaftGraphBuildingInterface : public WasmGraphBuilderBase {
           1);
     }
     result->op =
-        __ AnnotateWasmType(__ BitcastWordPtrToSmi(result->op), kWasmRefI31);
+        __ AnnotateWasmType(__ BitcastWordPtrToSmi(result->op), result->type);
   }
 
   void I31GetS(FullDecoder* decoder, const Value& input, Value* result) {
@@ -7488,7 +7521,7 @@ class TurboshaftGraphBuildingInterface : public WasmGraphBuilderBase {
         needs_type_or_null_check &&
         !EquivalentTypes(table->type.AsNonNull(),
                          ValueType::Ref(imm.sig_imm.heap_type()),
-                         decoder->module_, decoder->module_);
+                         decoder->module_);
     bool needs_null_check =
         needs_type_or_null_check && table->type.is_nullable();
 
@@ -8263,7 +8296,7 @@ class TurboshaftGraphBuildingInterface : public WasmGraphBuilderBase {
 
     for (uint32_t i = 0; i < imm.struct_type->field_count(); ++i) {
       __ StructSet(struct_value, args[i], imm.struct_type, imm.index, i,
-                   compiler::kWithoutNullCheck);
+                   compiler::kWithoutNullCheck, {});
     }
     // If this assert fails then initialization of padding field might be
     // necessary.

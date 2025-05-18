@@ -136,8 +136,8 @@ class WasmMemoryContentTable
 
   bool TypesUnrelated(wasm::ModuleTypeIndex type1,
                       wasm::ModuleTypeIndex type2) {
-    return wasm::HeapTypesUnrelated(
-        module_->heap_type(type1), module_->heap_type(type2), module_, module_);
+    return wasm::HeapTypesUnrelated(module_->heap_type(type1),
+                                    module_->heap_type(type2), module_);
   }
 
   void Invalidate(const StructSetOp& set) {
@@ -528,11 +528,23 @@ class WasmLoadEliminationReducer : public Next {
     return Next::ReduceInputGraph##Name(ig_index, op);                         \
   }
 
-  EMIT_OP(StructGet)
   EMIT_OP(ArrayLength)
   EMIT_OP(StringAsWtf16)
   EMIT_OP(StringPrepareForGetCodeUnit)
   EMIT_OP(AnyConvertExtern)
+
+  OpIndex REDUCE_INPUT_GRAPH(StructGet)(OpIndex ig_index,
+                                        const StructGetOp& op) {
+    // Atomic loads are never eliminated (not even on unshared objects).
+    if (v8_flags.turboshaft_wasm_load_elimination && !op.is_atomic()) {
+      OpIndex ig_replacement_index = analyzer_.Replacement(ig_index);
+      if (ig_replacement_index.valid()) {
+        OpIndex replacement = Asm().MapToNewGraph(ig_replacement_index);
+        return replacement;
+      }
+    }
+    return Next::ReduceInputGraphStructGet(ig_index, op);
+  }
 
   OpIndex REDUCE_INPUT_GRAPH(StructSet)(OpIndex ig_index,
                                         const StructSetOp& op) {
@@ -720,6 +732,9 @@ bool RepIsCompatible(RegisterRepresentation actual,
 
 void WasmLoadEliminationAnalyzer::ProcessStructGet(OpIndex op_idx,
                                                    const StructGetOp& get) {
+  // TODO(mliedtke): struct.atomic.get also participates in load-elimination by
+  // providing values that can be used to load-eliminate struct.get operations
+  // for the same field. Is this the desired behavior?
   OpIndex existing = memory_.Find(get);
   if (existing.valid()) {
     const Operation& replacement = graph_.Get(existing);

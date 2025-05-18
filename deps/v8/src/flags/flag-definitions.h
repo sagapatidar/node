@@ -277,10 +277,9 @@ DEFINE_BOOL(js_shipping, true, "enable all shipped JavaScript features")
   V(harmony_shadow_realm, "harmony ShadowRealm")                               \
   V(harmony_struct, "harmony structs, shared structs, and shared arrays")
 
-#define JAVASCRIPT_INPROGRESS_FEATURES_BASE(V)       \
-  V(js_decorators, "decorators")                     \
-  V(js_source_phase_imports, "source phase imports") \
-  V(js_base_64, "Uint8Array to/from base64 and hex")
+#define JAVASCRIPT_INPROGRESS_FEATURES_BASE(V) \
+  V(js_decorators, "decorators")               \
+  V(js_source_phase_imports, "source phase imports")
 
 #ifdef V8_INTL_SUPPORT
 #define HARMONY_INPROGRESS(V) \
@@ -294,7 +293,8 @@ DEFINE_BOOL(js_shipping, true, "enable all shipped JavaScript features")
 
 // Features that are complete (but still behind the --harmony flag).
 #define HARMONY_STAGED_BASE(V)
-#define JAVASCRIPT_STAGED_FEATURES_BASE(V)
+#define JAVASCRIPT_STAGED_FEATURES_BASE(V)                                   \
+  V(js_base_64, "Uint8Array to/from base64 and hex")
 
 #ifdef V8_INTL_SUPPORT
 #define HARMONY_STAGED(V)                    \
@@ -470,7 +470,6 @@ DEFINE_EXPERIMENTAL_FEATURE(conservative_stack_scanning,
 #endif  // V8_ENABLE_DIRECT_HANDLE
 DEFINE_IMPLICATION(conservative_stack_scanning,
                    scavenger_conservative_object_pinning)
-DEFINE_NEG_IMPLICATION(conservative_stack_scanning, compact_with_stack)
 
 #ifdef V8_ENABLE_DIRECT_HANDLE
 #define V8_ENABLE_DIRECT_HANDLE_BOOL true
@@ -592,7 +591,7 @@ DEFINE_BOOL(maglev_destroy_on_background, true,
             "Destroy compilation jobs on background thread")
 DEFINE_BOOL(maglev_inline_api_calls, false,
             "Inline CallApiCallback builtin into generated code")
-DEFINE_BOOL(maglev_cons_string_elision, false,
+DEFINE_BOOL(maglev_cons_string_elision, true,
             "Native support for cons strings and their elision in maglev.")
 DEFINE_BOOL(maglev_pretenure_store_values, false,
             "Recursively pretenure values which are stored into pretenured "
@@ -602,7 +601,6 @@ DEFINE_WEAK_IMPLICATION(maglev_future, maglev_speculative_hoist_phi_untagging)
 DEFINE_WEAK_IMPLICATION(maglev_future, maglev_inline_api_calls)
 DEFINE_WEAK_IMPLICATION(maglev_future, maglev_escape_analysis)
 DEFINE_WEAK_IMPLICATION(maglev_future, maglev_licm)
-DEFINE_WEAK_IMPLICATION(maglev_future, maglev_cons_string_elision)
 DEFINE_WEAK_IMPLICATION(maglev_future, maglev_pretenure_store_values)
 // This might be too big of a hammer but we must prohibit moving the C++
 // trampolines while we are executing a C++ code.
@@ -715,6 +713,10 @@ DEFINE_BOOL(maglev_skip_migration_check_for_polymorphic_access, false,
 DEFINE_WEAK_IMPLICATION(future, flush_baseline_code)
 #endif
 
+DEFINE_BOOL(specialize_code_for_one_byte_seq_strings, false,
+            "Specialize maglev code for feedback with only one-byte sequential "
+            "strings.")
+
 #ifdef V8_TARGET_ARCH_64_BIT
 DEFINE_BOOL(additive_safe_int_feedback, false,
             "Enable the use of AdditiveSafeInteger feedback")
@@ -743,12 +745,25 @@ DEFINE_BOOL(empty_context_extension_dep, true,
             "Use compilation dependency to avoid dynamic checks for "
             "non-empty context extensions")
 
-DEFINE_BOOL(json_stringify_fast_path, false, "Enable JSON.stringify fast-path")
-DEFINE_WEAK_IMPLICATION(future, json_stringify_fast_path)
+DEFINE_BOOL(json_stringify_fast_path, true, "Enable JSON.stringify fast-path")
 
-DEFINE_BOOL(cache_property_key_string_adds, false,
+// TODO(jgruber): Remove this flag.
+DEFINE_BOOL(cache_property_key_string_adds, true,
             "Enable caching property keys created by concatenating strings")
-DEFINE_WEAK_IMPLICATION(future, cache_property_key_string_adds)
+
+DEFINE_UINT(smi_string_cache_size, 8192, "Full size of SmiStringCache")
+DEFINE_UINT(double_string_cache_size, 4096, "Full size of DoubleStringCache")
+DEFINE_BOOL(trace_number_string_cache, false,
+            "Print NumberString caches stats on GC and at the end")
+DEFINE_WEAK_IMPLICATION(trace_number_string_cache, native_code_counters)
+
+DEFINE_BOOL(maglev_inline_date_accessors, false,
+            "Inline Date accessors by Maglev")
+DEFINE_BOOL(turbofan_inline_date_accessors, false,
+            "Inline Date accessors by TurboFan")
+DEFINE_BOOL(inline_date_accessors, true, "Inline Date accessors")
+DEFINE_WEAK_IMPLICATION(inline_date_accessors, maglev_inline_date_accessors)
+DEFINE_WEAK_IMPLICATION(inline_date_accessors, turbofan_inline_date_accessors)
 
 #ifdef V8_ENABLE_EXTENSIBLE_RO_SNAPSHOT
 DEFINE_BOOL(extensible_ro_snapshot, true,
@@ -932,7 +947,7 @@ DEFINE_BOOL(trace_protector_invalidation, false,
 DEFINE_BOOL(decommit_pooled_pages, true,
             "decommit, rather than discard pooled pages")
 DEFINE_BOOL(
-    zero_unused_memory, false,
+    zero_unused_memory, true,
     "Zero unused memory (except for memory which was discarded) on memory "
     "reducing GCs.")
 
@@ -1018,8 +1033,13 @@ DEFINE_VALUE_IMPLICATION(jit_fuzzing, wasm_tiering_budget, 1)
 DEFINE_IMPLICATION(jit_fuzzing, wasm_inlining_ignore_call_counts)
 #endif  // V8_ENABLE_WEBASSEMBLY
 
+#if defined(V8_OS_AIX)
+DEFINE_BOOL(use_std_math_pow, false,
+            "use std::pow instead of our custom implementation")
+#else
 DEFINE_BOOL(use_std_math_pow, true,
             "use std::pow instead of our custom implementation")
+#endif
 
 // Flags for inline caching and feedback vectors.
 DEFINE_BOOL(use_ic, true, "use inline caching")
@@ -1258,6 +1278,7 @@ DEFINE_STRING(trace_turbo_cfg_file, nullptr,
 DEFINE_BOOL(trace_turbo_types, true, "trace TurboFan's types")
 DEFINE_BOOL(trace_turbo_scheduler, false, "trace TurboFan's scheduler")
 DEFINE_BOOL(trace_turbo_reduction, false, "trace TurboFan's various reducers")
+DEFINE_BOOL(trace_turbo_bailouts, false, "trace TurboFan's various bailouts")
 #ifdef V8_ENABLE_SLOW_TRACING
 #define DEFINE_SLOW_TRACING_BOOL DEFINE_BOOL
 #else
@@ -1335,6 +1356,9 @@ DEFINE_BOOL(trace_verify_csa, false, "trace code stubs verification")
 DEFINE_STRING(csa_trap_on_node, nullptr,
               "trigger break point when a node with given id is created in "
               "given stub. The format is: StubName,NodeId")
+DEFINE_STRING(
+    builtins_effects_src, nullptr,
+    "path where to generate builtins-effects.h (used for mksnapshot only)")
 DEFINE_BOOL_READONLY(fixed_array_bounds_checks, true,
                      "enable FixedArray bounds checks")
 DEFINE_BOOL(turbo_stats, false, "print TurboFan statistics")
@@ -1347,21 +1371,33 @@ DEFINE_BOOL(turbo_inlining, true, "enable inlining in TurboFan")
 DEFINE_BOOL(turbo_elide_frames, true, "enable frame elision in TurboFan")
 DEFINE_INT(max_inlined_bytecode_size, 460,
            "maximum size of bytecode for a single inlining")
+// {max_inlined_bytecode_size_cumulative} and
+// {max_inlined_bytecode_size_absolute} are the inlining limits for the regular
+// case. By being not too high, we ensure that Turbofan compilation doesn't take
+// too long.
+// Still, inlining very small functions is usually very beneficial (removes call
+// overhead, enable better load elimination and escape analysis, removes heap
+// number allocations...), so small functions usually ignore the limits above
+// and use {max_inlined_bytecode_size_small_total} instead.
 DEFINE_INT(max_inlined_bytecode_size_cumulative, 920,
            "maximum cumulative size of bytecode considered for inlining")
 DEFINE_INT(max_inlined_bytecode_size_absolute, 4600,
            "maximum absolute size of bytecode considered for inlining")
+DEFINE_INT(max_inlined_bytecode_size_small_total, 30000,
+           "maximum size of small functions' bytecode that can be inlining")
 DEFINE_FLOAT(
     reserve_inline_budget_scale_factor, 1.2,
     "scale factor of bytecode size used to calculate the inlining budget")
 DEFINE_INT(max_inlined_bytecode_size_small, 27,
            "maximum size of bytecode considered for small function inlining")
+DEFINE_INT(max_inlined_bytecode_size_small_with_heapnum_in_out, 75,
+           "maximum size of bytecode considered for small function inlining, "
+           "when the function call has a HeapNumber as input or output")
 DEFINE_INT(max_optimized_bytecode_size, 60 * KB,
            "maximum bytecode size to "
            "be considered for turbofan optimization; too high values may cause "
            "the compiler to hit (release) assertions")
 DEFINE_FLOAT(min_inlining_frequency, 0.15, "minimum frequency for inlining")
-DEFINE_BOOL(polymorphic_inlining, true, "polymorphic inlining")
 DEFINE_BOOL(stress_inline, false,
             "set high thresholds for inlining to inline as much as possible")
 DEFINE_VALUE_IMPLICATION(stress_inline, max_inlined_bytecode_size, 999999)
@@ -1370,7 +1406,6 @@ DEFINE_VALUE_IMPLICATION(stress_inline, max_inlined_bytecode_size_cumulative,
 DEFINE_VALUE_IMPLICATION(stress_inline, max_inlined_bytecode_size_absolute,
                          999999)
 DEFINE_VALUE_IMPLICATION(stress_inline, min_inlining_frequency, 0.)
-DEFINE_IMPLICATION(stress_inline, polymorphic_inlining)
 DEFINE_BOOL(trace_turbo_inlining, false, "trace TurboFan inlining")
 DEFINE_BOOL(turbo_inline_array_builtins, true,
             "inline array builtins in TurboFan code")
@@ -1505,9 +1540,6 @@ DEFINE_BOOL(turbo_optimize_apply, true, "optimize Function.prototype.apply")
 DEFINE_BOOL(turbo_optimize_math_minmax, true,
             "optimize call math.min/max with double array")
 
-DEFINE_BOOL(turbo_collect_feedback_in_generic_lowering, false,
-            "enable experimental feedback collection in generic lowering.")
-
 DEFINE_BOOL(turboshaft, true, "enable TurboFan's Turboshaft phases for JS")
 
 // Can't use Turbofan without Turboshaft.
@@ -1574,6 +1606,7 @@ DEFINE_WEAK_IMPLICATION(future, typed_array_length_loading)
 
 #if V8_ENABLE_WEBASSEMBLY
 DEFINE_IMPLICATION(experimental_wasm_shared, shared_heap)
+DEFINE_IMPLICATION(experimental_wasm_shared, shared_string_table)
 #endif
 
 #ifdef DEBUG
@@ -1708,6 +1741,10 @@ DEFINE_BOOL(stress_wasm_stack_switching, false,
             "with a regular (non-JSPI) export")
 DEFINE_INT(wasm_stack_switching_stack_size, V8_DEFAULT_STACK_SIZE_KB,
            "default size of stacks for wasm stack-switching (in kB)")
+// 1 will be rounded up to the smallest possible initial stack size, which
+// depends on the stack limit margin and the platform's page size.
+DEFINE_VALUE_IMPLICATION(experimental_wasm_growable_stacks,
+                         wasm_stack_switching_stack_size, 1)
 DEFINE_BOOL(liftoff, true,
             "enable Liftoff, the baseline compiler for WebAssembly")
 DEFINE_BOOL(liftoff_only, false,
@@ -2245,7 +2282,7 @@ DEFINE_BOOL_READONLY(verify_heap, false,
                      "verify heap pointers before and after GC")
 #endif
 #if V8_OS_DARWIN
-DEFINE_BOOL(safepoint_bump_qos_class, false,
+DEFINE_BOOL(safepoint_bump_qos_class, true,
             "Bump QOS class for running threads to reach safepoint")
 #endif
 DEFINE_BOOL(memory_reducer_respects_frozen_state, false,
@@ -2303,6 +2340,7 @@ DEFINE_BOOL(flush_code_based_on_tab_visibility, false,
             "Flush code when tab goes into the background.")
 DEFINE_INT(bytecode_old_time, 30, "number of seconds before we flush code")
 DEFINE_BOOL(stress_flush_code, false, "stress code flushing")
+DEFINE_WEAK_IMPLICATION(stress_flush_code, flush_baseline_code)
 DEFINE_BOOL(trace_flush_code, false, "trace bytecode flushing")
 DEFINE_BOOL(use_marking_progress_bar, true,
             "Use a progress bar to scan large objects in increments when "

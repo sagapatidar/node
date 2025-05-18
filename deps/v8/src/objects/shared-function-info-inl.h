@@ -29,7 +29,6 @@
 #include "src/objects/templates-inl.h"
 
 #if V8_ENABLE_WEBASSEMBLY
-#include "src/wasm/wasm-module.h"
 #include "src/wasm/wasm-objects.h"
 #endif  // V8_ENABLE_WEBASSEMBLY
 
@@ -153,6 +152,12 @@ void SharedFunctionInfo::SetUntrustedData(Tagged<Object> value,
 
 bool SharedFunctionInfo::HasTrustedData() const {
   return !IsTrustedPointerFieldEmpty(kTrustedFunctionDataOffset);
+}
+
+bool SharedFunctionInfo::HasUnpublishedTrustedData(
+    IsolateForSandbox isolate) const {
+  return IsTrustedPointerFieldUnpublished(kTrustedFunctionDataOffset,
+                                          kUnknownIndirectPointerTag, isolate);
 }
 
 bool SharedFunctionInfo::HasUntrustedData() const { return !HasTrustedData(); }
@@ -719,6 +724,17 @@ IsCompiledScope::IsCompiledScope(const Tagged<SharedFunctionInfo> shared,
 
   DCHECK_IMPLIES(!retain_code_.is_null(), is_compiled());
   DCHECK_EQ(shared->is_compiled(), is_compiled());
+}
+
+IsBaselineCompiledScope::IsBaselineCompiledScope(
+    const Tagged<SharedFunctionInfo> shared, Isolate* isolate) {
+  Tagged<Object> data_obj = shared->GetTrustedData();
+  if (IsCode(data_obj)) {
+    Tagged<Code> code = Cast<Code>(data_obj);
+    DCHECK_EQ(code->kind(), CodeKind::BASELINE);
+    retain_code_ = handle(code, isolate);
+    is_compiled_ = true;
+  }
 }
 
 bool SharedFunctionInfo::has_simple_parameters() {

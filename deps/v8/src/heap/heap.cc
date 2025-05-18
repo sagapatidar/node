@@ -1333,6 +1333,9 @@ void FreeCachesOnMemoryPressure(Isolate* isolate) {
   isolate->AbortConcurrentOptimization(BlockingBehavior::kDontBlock);
   isolate->ClearSerializerData();
   isolate->compilation_cache()->Clear();
+
+  // TODO(ishell): consider trimming number to string caches to initial size.
+
   if (v8_flags.discard_memory_pool_before_memory_pressure_gcs) {
     IsolateGroup::current()->page_pool()->ReleaseImmediately();
   }
@@ -2683,7 +2686,9 @@ void Heap::MarkCompactPrologue() {
   RegExpResultsCache::Clear(regexp_multiple_cache());
   RegExpResultsCache_MatchGlobalAtom::Clear(this);
 
-  FlushNumberStringCache();
+  // Flush the number to string caches.
+  smi_string_cache()->Clear();
+  double_string_cache()->Clear();
 }
 
 void Heap::Scavenge() {
@@ -3133,15 +3138,6 @@ void Heap::ShrinkOldGenerationAllocationLimitIfNotConfigured() {
         std::min(new_global_allocation_limit, global_allocation_limit());
     SetOldGenerationAndGlobalAllocationLimit(
         new_old_generation_allocation_limit, new_global_allocation_limit);
-  }
-}
-
-void Heap::FlushNumberStringCache() {
-  // Flush the number to string cache.
-  int len = number_string_cache()->length();
-  ReadOnlyRoots roots{isolate()};
-  for (int i = 0; i < len; i++) {
-    number_string_cache()->set(i, roots.undefined_value(), SKIP_WRITE_BARRIER);
   }
 }
 
@@ -4484,6 +4480,17 @@ bool Heap::InSpaceSlow(Address addr, AllocationSpace space) const {
   UNREACHABLE();
 }
 
+bool Heap::CanReferenceHeapObject(Tagged<HeapObject> obj) {
+  MemoryChunk* chunk = MemoryChunk::FromHeapObject(obj);
+  // Objects in read-only space are allowed to be used in any isolate.
+  if (chunk->InReadOnlySpace()) return true;
+  Heap* obj_heap = chunk->GetHeap();
+  Heap* expected_heap = chunk->InWritableSharedSpace()
+                            ? isolate()->shared_space_isolate()->heap()
+                            : this;
+  return obj_heap == expected_heap;
+}
+
 bool Heap::IsValidAllocationSpace(AllocationSpace space) {
   switch (space) {
     case NEW_SPACE:
@@ -4851,7 +4858,11 @@ void Heap::IterateStackRoots(RootVisitor* v) { isolate_->Iterate(v); }
 
 void Heap::IterateConservativeStackRoots(RootVisitor* root_visitor,
                                          IterateRootsMode roots_mode) {
-  if (!v8_flags.conservative_stack_scanning || !IsGCWithStack()) return;
+  const StackScanMode stack_scan_mode =
+      ConservativeStackScanningModeForMajorGC();
+  DCHECK_IMPLIES(stack_scan_mode == Heap::StackScanMode::kSelective,
+                 IsGCWithStack());
+  if ((stack_scan_mode == StackScanMode::kNone) || !IsGCWithStack()) return;
 
   // In case of a shared GC, we're interested in the main isolate for CSS.
   Isolate* main_isolate = roots_mode == IterateRootsMode::kClientIsolate
@@ -4859,13 +4870,24 @@ void Heap::IterateConservativeStackRoots(RootVisitor* root_visitor,
                               : isolate();
 
   ConservativeStackVisitor stack_visitor(main_isolate, root_visitor);
-  IterateConservativeStackRoots(&stack_visitor);
+
+  IterateConservativeStackRoots(&stack_visitor, stack_scan_mode);
 }
 
 void Heap::IterateConservativeStackRoots(
-    ::heap::base::StackVisitor* stack_visitor) {
+    ::heap::base::StackVisitor* stack_visitor, StackScanMode stack_scan_mode) {
   DCHECK(IsGCWithStack());
+  DCHECK_NE(stack_scan_mode, StackScanMode::kNone);
 
+  if (stack_scan_mode == StackScanMode::kSelective) {
+    DCHECK(IsGCWithMainThreadStack());
+    DCHECK(selective_stack_scan_start_address_.has_value());
+    stack().IteratePointersFromAddressUntilMarker(
+        stack_visitor, selective_stack_scan_start_address_.value());
+    return;
+  }
+
+  DCHECK_EQ(stack_scan_mode, StackScanMode::kFull);
   if (IsGCWithMainThreadStack()) {
     stack().IteratePointersUntilMarker(stack_visitor);
   }
@@ -7523,6 +7545,38 @@ CodePageMemoryModificationScopeForDebugging::
     ~CodePageMemoryModificationScopeForDebugging() {}
 
 #endif
+
+ConservativePinningScope::ConservativePinningScope(Heap* heap,
+                                                   const void* frame_address)
+    : heap_(heap) {
+  DCHECK(::heap::base::Stack::IsOnCurrentStack(this));
+  DCHECK(!heap_->selective_stack_scan_start_address_.has_value());
+#if V8_HOST_ARCH_IA32 || V8_HOST_ARCH_X64 || V8_HOST_ARCH_ARM || \
+    V8_HOST_ARCH_ARM64
+  CHECK_LE(this, frame_address);
+#else
+  if (V8_UNLIKELY(this > frame_address)) {
+    // `frame_address` should be higher than `this`, but we observed that this
+    // may not hold in some cases (e.g. due to missing inlining or unexpected
+    // frame layouts). In such cases, we scan the stack either from the last
+    // c_entry_fp or the whole stack.
+    const Address c_entry_fp = *heap_->isolate()->c_entry_fp_address();
+    frame_address = (c_entry_fp == kNullAddress)
+                        ? static_cast<void*>(v8::base::Stack::GetStackStart())
+                        : reinterpret_cast<const void*>(c_entry_fp);
+  }
+#endif  // V8_HOST_ARCH_IA32 || V8_HOST_ARCH_X64 || V8_HOST_ARCH_ARM ||
+        // V8_HOST_ARCH_ARM64
+  // The stack segment covered by this scope should include the scope itself.
+  DCHECK_NOT_NULL(frame_address);
+  DCHECK_LE(this, frame_address);
+  DCHECK(::heap::base::Stack::IsOnCurrentStack(frame_address));
+  heap_->selective_stack_scan_start_address_ = frame_address;
+}
+ConservativePinningScope::~ConservativePinningScope() {
+  DCHECK(heap_->selective_stack_scan_start_address_.has_value());
+  heap_->selective_stack_scan_start_address_.reset();
+}
 
 #include "src/objects/object-macros-undef.h"
 

@@ -1267,7 +1267,14 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       auto ool = zone()->New<OutOfLineRecordWrite>(
           this, object, offset, value, mode, DetermineStubCallMode(),
           &unwinding_info_writer_);
-      __ AtomicStoreTaggedField(value, object, offset, i.TempRegister(0));
+      Register temp = i.TempRegister(0);
+      __ Add(temp, object, offset);
+      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+      if (COMPRESS_POINTERS_BOOL) {
+        __ Stlr(value.W(), temp);
+      } else {
+        __ Stlr(value, temp);
+      }
       // Skip the write barrier if the value is a Smi. However, this is only
       // valid if the value isn't an indirect pointer. Otherwise the value will
       // be a pointer table index, which will always look like a Smi (but
@@ -2302,10 +2309,13 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
       __ AtomicDecompressTaggedSigned(i.OutputRegister(), i.InputRegister(0),
                                       i.InputRegister(1), i.TempRegister(0));
       break;
-    case kArm64LdarDecompressTagged:
-      __ AtomicDecompressTagged(i.OutputRegister(), i.InputRegister(0),
-                                i.InputRegister(1), i.TempRegister(0));
+    case kArm64LdarDecompressTagged: {
+      const int pc_offset =
+          __ AtomicDecompressTagged(i.OutputRegister(), i.InputRegister(0),
+                                    i.InputRegister(1), i.TempRegister(0));
+      RecordTrapInfoIfNeeded(zone(), this, opcode, instr, pc_offset);
       break;
+    }
     case kArm64LdrDecodeSandboxedPointer:
       __ LoadSandboxedPointerField(i.OutputRegister(), i.MemoryOperand());
       break;

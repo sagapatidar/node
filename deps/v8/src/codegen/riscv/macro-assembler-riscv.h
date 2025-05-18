@@ -149,9 +149,6 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
       NOOP_UNLESS_DEBUG_CODE;
 
   // Like Assert(), but always enabled.
-  void Check(Condition cond, AbortReason reason);
-
-  // Like Assert(), but always enabled.
   void Check(Condition cc, AbortReason reason, Register rs, Operand rt);
 
   // Same as Check() but expresses that the check is needed for the sandbox.
@@ -406,10 +403,7 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
     push_helper(rs...);
   }
 
-  template <>
-  void push_helper(Register r) {
-    StoreWord(r, MemOperand(sp, 0));
-  }
+  void push_helper() {}
 
  public:
   // Push a number of registers. The leftmost register first (to the highest
@@ -554,10 +548,7 @@ class V8_EXPORT_PRIVATE MacroAssembler : public MacroAssemblerBase {
     LoadWord(r, MemOperand(sp, sizeof...(rs) * kSystemPointerSize));
   }
 
-  template <>
-  void pop_helper(Register r) {
-    LoadWord(r, MemOperand(sp, 0));
-  }
+  void pop_helper() {}
 
  public:
   // Pop a number of registers. The leftmost register last (from the highest

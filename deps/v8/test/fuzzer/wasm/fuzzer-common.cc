@@ -131,9 +131,8 @@ DirectHandle<WasmModuleObject> CompileReferenceModule(
 
 #if V8_ENABLE_DRUMBRAKE
 void ClearJsToWasmWrappersForTesting(Isolate* isolate) {
-  for (int i = 0; i < isolate->heap()->js_to_wasm_wrappers()->length(); i++) {
-    isolate->heap()->js_to_wasm_wrappers()->set(i, ClearedValue(isolate));
-  }
+  isolate->heap()->SetJSToWasmWrappers(
+      ReadOnlyRoots(isolate).empty_weak_fixed_array());
 }
 
 int ExecuteAgainstReference(Isolate* isolate,
@@ -360,7 +359,7 @@ std::vector<uint8_t> CreateDummyModuleWireBytes(Zone* zone) {
   const bool is_final = true;
   builder.AddRecursiveTypeGroup(0, 2);
   builder.AddArrayType(zone->New<ArrayType>(kWasmF32, true), is_final);
-  StructType::Builder struct_builder(zone, 2, false);
+  StructType::Builder struct_builder(zone, 2, false, false);
   struct_builder.AddField(kWasmI64, false);
   struct_builder.AddField(kWasmExternRef, false);
   builder.AddStructType(struct_builder.Build(), !is_final);
@@ -409,6 +408,11 @@ void EnableExperimentalWasmFeatures(v8::Isolate* isolate) {
 
       // See https://crbug.com/335082212.
       v8_flags.wasm_inlining_call_indirect = true;
+
+#ifdef V8_ENABLE_WASM_SIMD256_REVEC
+      // Fuzz revectorization, which is otherwise still considered experimental.
+      v8_flags.experimental_wasm_revectorize = true;
+#endif  // V8_ENABLE_WASM_SIMD256_REVEC
 
       // Enforce implications from enabling features.
       FlagList::EnforceFlagImplications();

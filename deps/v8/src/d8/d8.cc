@@ -194,7 +194,7 @@ class ShellArrayBufferAllocator : public ArrayBufferAllocatorBase {
     v8::PageAllocator* page_allocator = GetPageAllocator();
     size_t page_size = page_allocator->AllocatePageSize();
     size_t allocated = RoundUp(length, page_size);
-    return i::AllocatePages(page_allocator, nullptr, allocated, page_size,
+    return i::AllocatePages(page_allocator, allocated, page_size,
                             PageAllocator::kReadWrite);
   }
 
@@ -3124,8 +3124,13 @@ void Shell::SetTimeout(const v8::FunctionCallbackInfo<v8::Value>& info) {
 #ifdef V8_ENABLE_CONTINUATION_PRESERVED_EMBEDDER_DATA
 void Shell::GetContinuationPreservedEmbedderData(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
-  info.GetReturnValue().Set(
-      info.GetIsolate()->GetContinuationPreservedEmbedderData());
+  Local<Data> data = info.GetIsolate()->GetContinuationPreservedEmbedderData();
+  DCHECK(!data.IsEmpty());
+  if (!data->IsValue()) {
+    data = Undefined(info.GetIsolate());
+  }
+  DCHECK(!data.IsEmpty());
+  info.GetReturnValue().Set(Local<Value>::Cast(data));
 }
 #endif  // V8_ENABLE_CONTINUATION_PRESERVED_EMBEDDER_DATA
 
@@ -6658,6 +6663,7 @@ int Shell::Main(int argc, char* argv[]) {
 
   Shell::counter_map_ = new CounterMap();
   if (options.dump_counters || options.dump_counters_nvp ||
+      i::v8_flags.trace_number_string_cache ||
       i::TracingFlags::is_gc_stats_enabled()) {
     create_params.counter_lookup_callback = LookupCounter;
     create_params.create_histogram_callback = CreateHistogram;

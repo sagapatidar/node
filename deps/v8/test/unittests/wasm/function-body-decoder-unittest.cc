@@ -141,14 +141,15 @@ class TestModuleBuilder {
   }
 
   HeapType AddStruct(std::initializer_list<F> fields,
-                     ModuleTypeIndex supertype = kNoSuperType) {
-    StructType::Builder type_builder(
-        &mod.signature_zone, static_cast<uint32_t>(fields.size()), false);
+                     ModuleTypeIndex supertype = kNoSuperType,
+                     bool is_shared = false) {
+    StructType::Builder type_builder(&mod.signature_zone,
+                                     static_cast<uint32_t>(fields.size()),
+                                     false, is_shared);
     for (F field : fields) {
       type_builder.AddField(field.first, field.second);
     }
     const bool is_final = true;
-    const bool is_shared = false;
     mod.AddStructTypeForTesting(type_builder.Build(), supertype, is_final,
                                 is_shared);
     GetTypeCanonicalizer()->AddRecursiveSingletonGroup(module());
@@ -159,10 +160,9 @@ class TestModuleBuilder {
     return AddStruct(fields, supertype.ref_index());
   }
 
-  HeapType AddArray(ValueType type, bool mutability) {
+  HeapType AddArray(ValueType type, bool mutability, bool is_shared = false) {
     ArrayType* array = mod.signature_zone.New<ArrayType>(type, mutability);
     const bool is_final = true;
-    const bool is_shared = false;
     mod.AddArrayTypeForTesting(array, kNoSuperType, is_final, is_shared);
     GetTypeCanonicalizer()->AddRecursiveSingletonGroup(module());
     ModuleTypeIndex index{static_cast<uint8_t>(mod.types.size() - 1)};
@@ -4100,15 +4100,15 @@ TEST_F(FunctionBodyDecoderTest, GCStruct) {
       &sig_i_r,
       {WASM_STRUCT_GET_S(struct_type_index, field_index, WASM_LOCAL_GET(0))},
       kAppendEnd,
-      "struct.get_s: Immediate field 0 of type 0 has non-packed type i32. Use "
-      "struct.get instead.");
+      "struct.get_s: Field 0 of type 0 has non-packed type i32. Use struct.get "
+      "instead.");
 
   ExpectFailure(
       &sig_i_r,
       {WASM_STRUCT_GET_U(struct_type_index, field_index, WASM_LOCAL_GET(0))},
       kAppendEnd,
-      "struct.get_u: Immediate field 0 of type 0 has non-packed type i32. Use "
-      "struct.get instead.");
+      "struct.get_u: Field 0 of type 0 has non-packed type i32. Use struct.get "
+      "instead.");
 }
 
 TEST_F(FunctionBodyDecoderTest, GCArray) {
@@ -4193,14 +4193,14 @@ TEST_F(FunctionBodyDecoderTest, GCArray) {
       &sig_c_r,
       {WASM_ARRAY_GET_S(array_type_index, WASM_LOCAL_GET(0), WASM_I32V(5))},
       kAppendEnd,
-      "array.get_s: Immediate array type 0 has non-packed type funcref. Use "
-      "array.get instead.");
+      "array.get_s: Array type 0 has non-packed type funcref. Use array.get "
+      "instead.");
   ExpectFailure(
       &sig_c_r,
       {WASM_ARRAY_GET_U(array_type_index, WASM_LOCAL_GET(0), WASM_I32V(5))},
       kAppendEnd,
-      "array.get_u: Immediate array type 0 has non-packed type funcref. Use "
-      "array.get instead.");
+      "array.get_u: Array type 0 has non-packed type funcref. Use array.get "
+      "instead.");
 
   /** array.set **/
   ExpectValidates(&sig_v_r,
@@ -4254,7 +4254,7 @@ TEST_F(FunctionBodyDecoderTest, GCArray) {
   ExpectFailure(&sig_v_r2,
                 {WASM_ARRAY_SET(immutable_array_type_index, WASM_LOCAL_GET(0),
                                 WASM_I32V(0), WASM_I32V(42))},
-                kAppendEnd, "array.set: immediate array type 2 is immutable");
+                kAppendEnd, "array.set: Array type 2 is immutable");
 }
 
 TEST_F(FunctionBodyDecoderTest, PackedFields) {
@@ -4322,13 +4322,13 @@ TEST_F(FunctionBodyDecoderTest, PackedFields) {
                 {WASM_ARRAY_GET(array_type_index,
                                 WASM_REF_NULL(array_type_index), WASM_I32V(0))},
                 kAppendEnd,
-                "array.get: Immediate array type 0 has packed type i8. Use "
-                "array.get_s or array.get_u instead.");
+                "array.get: Array type 0 has packed type i8. Use array.get_s "
+                "or array.get_u instead.");
   ExpectFailure(sigs.i_v(),
                 {WASM_STRUCT_GET(struct_type_index, field_index,
                                  WASM_REF_NULL(struct_type_index))},
                 kAppendEnd,
-                "struct.get: Immediate field 0 of type 1 has packed type i16. "
+                "struct.get: Field 0 of type 1 has packed type i16. "
                 "Use struct.get_s or struct.get_u instead.");
 }
 
@@ -6088,6 +6088,129 @@ TEST_F(FunctionBodyDecoderTest, WasmNoWasmFx) {
       {WASM_SWITCH(ToByte(cont_index), tag_i_i), WASM_DROP, WASM_DROP},
       kAppendEnd,
       "Invalid opcode 0xe5 (enable with --experimental-wasm-wasmfx)");
+}
+
+/*******************************************************************************
+ * Shared everything threads.
+ ******************************************************************************/
+
+class FunctionBodyDecoderTestAtomicInvalid
+    : public FunctionBodyDecoderTestBase<WithDefaultPlatformMixin<
+          ::testing::TestWithParam<std::tuple<ValueType, bool>>>> {};
+
+std::string PrintAtomicGetInvalidParams(
+    ::testing::TestParamInfo<std::tuple<ValueType, bool>> info) {
+  ValueType type(std::get<0>(info.param));
+  return std::string(std::get<1>(info.param) ? "shared_" : "unshared_") +
+         type.short_name();
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SharedAtomicsTest, FunctionBodyDecoderTestAtomicInvalid,
+    ::testing::Combine(
+        ::testing::Values(kWasmF32, kWasmF64, kWasmS128, kWasmI8, kWasmI16,
+                          IndependentHeapType{GenericKind::kExtern, kNullable,
+                                              true}),
+        ::testing::Values(true, false)),
+    PrintAtomicGetInvalidParams);
+
+TEST_P(FunctionBodyDecoderTestAtomicInvalid, Struct) {
+  WASM_FEATURE_SCOPE(shared);
+  ValueType element_type = std::get<0>(GetParam());
+  const bool shared = std::get<1>(GetParam());
+  HeapType struct_heaptype =
+      builder.AddStruct({F(element_type, true)}, kNoSuperType, shared);
+  ModuleTypeIndex struct_type_index = struct_heaptype.ref_index();
+  ValueType struct_type = ValueType::Ref(struct_heaptype);
+
+  const ValueType v_get[] = {element_type.Unpacked(), struct_type};
+  const FunctionSig sig_get(1, 1, v_get);
+  const ValueType v_set[] = {struct_type, element_type.Unpacked()};
+  const FunctionSig sig_set(0, 2, v_set);
+
+  ExpectFailure(
+      &sig_get,
+      {WASM_STRUCT_ATOMIC_GET(0, struct_type_index, 0, WASM_LOCAL_GET(0))},
+      kAppendEnd, "struct.atomic.get: Field 0 of type 0 has invalid type");
+  const bool set_is_valid = element_type == kWasmI8 || element_type == kWasmI16;
+  Validate(set_is_valid, &sig_set,
+           {WASM_STRUCT_ATOMIC_SET(0, struct_type_index, 0, WASM_LOCAL_GET(0),
+                                   WASM_LOCAL_GET(1))},
+           kAppendEnd, "struct.atomic.set: Field 0 of type 0 has invalid type");
+}
+
+TEST_P(FunctionBodyDecoderTestAtomicInvalid, Array) {
+  WASM_FEATURE_SCOPE(shared);
+  ValueType element_type = std::get<0>(GetParam());
+  const bool shared = std::get<1>(GetParam());
+  HeapType array_heaptype = builder.AddArray(element_type, true, shared);
+  ModuleTypeIndex array_type_index = array_heaptype.ref_index();
+  ValueType array_type = ValueType::Ref(array_heaptype);
+
+  const ValueType v_get[] = {element_type.Unpacked(), array_type};
+  const FunctionSig sig_get(1, 1, v_get);
+
+  ExpectFailure(
+      &sig_get, {WASM_ARRAY_ATOMIC_GET(0, array_type_index, WASM_LOCAL_GET(0))},
+      kAppendEnd, "array.atomic.get: Array 0 has invalid element type");
+}
+
+class FunctionBodyDecoderTestAtomicInvalidPacked
+    : public FunctionBodyDecoderTestBase<WithDefaultPlatformMixin<
+          ::testing::TestWithParam<std::tuple<ValueType, bool>>>> {};
+
+INSTANTIATE_TEST_SUITE_P(
+    SharedAtomicsTest, FunctionBodyDecoderTestAtomicInvalidPacked,
+    ::testing::Combine(
+        ::testing::Values(kWasmF32, kWasmF64, kWasmS128, kWasmI32, kWasmI64,
+                          IndependentHeapType{GenericKind::kExtern, kNullable,
+                                              true}),
+        ::testing::Values(true, false)),
+    PrintAtomicGetInvalidParams);
+
+TEST_P(FunctionBodyDecoderTestAtomicInvalidPacked, Struct) {
+  WASM_FEATURE_SCOPE(shared);
+  ValueType element_type = std::get<0>(GetParam());
+  const bool shared = std::get<1>(GetParam());
+  HeapType struct_heaptype =
+      builder.AddStruct({F(element_type, true)}, kNoSuperType, shared);
+  ModuleTypeIndex struct_type_index = struct_heaptype.ref_index();
+  ValueType struct_type = ValueType::Ref(struct_heaptype);
+
+  const ValueType v_get[] = {element_type.Unpacked(), struct_type};
+  const FunctionSig sig_get(1, 1, v_get);
+  const ValueType v_set[] = {struct_type, element_type.Unpacked()};
+  const FunctionSig sig_set(0, 2, v_set);
+
+  ExpectFailure(
+      &sig_get,
+      {WASM_STRUCT_ATOMIC_GET_S(0, struct_type_index, 0, WASM_LOCAL_GET(0))},
+      kAppendEnd, "struct.atomic.get_s: Field 0 of type 0 has non-packed type");
+  ExpectFailure(
+      &sig_get,
+      {WASM_STRUCT_ATOMIC_GET_U(0, struct_type_index, 0, WASM_LOCAL_GET(0))},
+      kAppendEnd, "struct.atomic.get_u: Field 0 of type 0 has non-packed type");
+}
+
+TEST_P(FunctionBodyDecoderTestAtomicInvalidPacked, Array) {
+  WASM_FEATURE_SCOPE(shared);
+  ValueType element_type = std::get<0>(GetParam());
+  const bool shared = std::get<1>(GetParam());
+  HeapType array_heaptype = builder.AddArray(element_type, true, shared);
+  ModuleTypeIndex array_type_index = array_heaptype.ref_index();
+  ValueType array_type = ValueType::Ref(array_heaptype);
+
+  const ValueType v_get[] = {element_type.Unpacked(), array_type};
+  const FunctionSig sig_get(1, 1, v_get);
+
+  ExpectFailure(
+      &sig_get,
+      {WASM_ARRAY_ATOMIC_GET_S(0, array_type_index, WASM_LOCAL_GET(0))},
+      kAppendEnd, "array.atomic.get_s: Array type 0 has non-packed type");
+  ExpectFailure(
+      &sig_get,
+      {WASM_ARRAY_ATOMIC_GET_U(0, array_type_index, WASM_LOCAL_GET(0))},
+      kAppendEnd, "array.atomic.get_u: Array type 0 has non-packed type");
 }
 
 #undef B1

@@ -20,9 +20,7 @@
 #include "src/wasm/compilation-environment-inl.h"
 #include "src/wasm/decoder.h"
 #include "src/wasm/function-body-decoder-impl.h"
-#include "src/wasm/wasm-engine.h"
 #include "src/wasm/wasm-module.h"
-#include "src/wasm/wasm-objects.h"
 #include "src/wasm/wasm-opcodes-inl.h"
 #include "src/wasm/wasm-subtyping.h"
 
@@ -793,6 +791,16 @@ class WasmInJsInliningInterface {
                  const FieldImmediate& field, const Value& field_value) {
     Bailout(decoder);
   }
+  void StructAtomicGet(FullDecoder* decoder, const Value& struct_obj,
+                       const FieldImmediate& field, bool is_signed,
+                       AtomicMemoryOrder memory_order, Value* result) {
+    Bailout(decoder);
+  }
+  void StructAtomicSet(FullDecoder* decoder, const Value& struct_object,
+                       const FieldImmediate& field, const Value& field_value,
+                       AtomicMemoryOrder memory_order) {
+    Bailout(decoder);
+  }
   void ArrayNew(FullDecoder* decoder, const ArrayIndexImmediate& imm,
                 const Value& length, const Value& initial_value,
                 Value* result) {
@@ -809,6 +817,12 @@ class WasmInJsInliningInterface {
   void ArrayGet(FullDecoder* decoder, const Value& array_obj,
                 const ArrayIndexImmediate& imm, const Value& index,
                 bool is_signed, Value* result) {
+    Bailout(decoder);
+  }
+  void ArrayAtomicGet(FullDecoder* decoder, const Value& array_obj,
+                      const ArrayIndexImmediate& imm, const Value& index,
+                      bool is_signed, AtomicMemoryOrder memory_order,
+                      Value* result) {
     Bailout(decoder);
   }
   void ArraySet(FullDecoder* decoder, const Value& array_obj,

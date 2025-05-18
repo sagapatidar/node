@@ -6182,7 +6182,7 @@ v8::MaybeLocal<v8::Promise> TestHostDefinedOptionFromCachedScript(
 TEST(CachedFunctionHostDefinedOption) {
   DisableAlwaysOpt();
   LocalContext env;
-  v8::Isolate* isolate = env->GetIsolate();
+  v8::Isolate* isolate = env.isolate();
   i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(isolate);
   i_isolate->compilation_cache()
       ->DisableScriptAndEval();  // Disable same-isolate code cache.
@@ -6244,7 +6244,7 @@ TEST(CachedFunctionHostDefinedOption) {
 TEST(CachedUnboundScriptHostDefinedOption) {
   DisableAlwaysOpt();
   LocalContext env;
-  v8::Isolate* isolate = env->GetIsolate();
+  v8::Isolate* isolate = env.isolate();
   i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(isolate);
   i_isolate->compilation_cache()
       ->DisableScriptAndEval();  // Disable same-isolate code cache.
@@ -6310,7 +6310,7 @@ v8::MaybeLocal<v8::Module> UnexpectedModuleResolveCallback(
 TEST(CachedModuleScriptFunctionHostDefinedOption) {
   DisableAlwaysOpt();
   LocalContext env;
-  v8::Isolate* isolate = env->GetIsolate();
+  v8::Isolate* isolate = env.isolate();
   i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(isolate);
   i_isolate->compilation_cache()
       ->DisableScriptAndEval();  // Disable same-isolate code cache.

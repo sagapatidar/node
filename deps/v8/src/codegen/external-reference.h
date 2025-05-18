@@ -32,7 +32,6 @@ enum class IsolateFieldId : uint8_t;
     "Address of the InterpreterEntryTrampoline instruction start")             \
   V(interpreter_dispatch_counters, "Interpreter::dispatch_counters")           \
   V(interpreter_dispatch_table_address, "Interpreter::dispatch_table_address") \
-  V(date_cache_stamp, "date_cache_stamp")                                      \
   V(stress_deopt_count, "Isolate::stress_deopt_count_address()")               \
   V(force_slow_path, "Isolate::force_slow_path_address()")                     \
   V(isolate_root, "Isolate::isolate_root()")                                   \
@@ -259,6 +258,10 @@ enum class IsolateFieldId : uint8_t;
     "name_to_index_hashtable_lookup_forwarded_string")                         \
   V(name_to_index_hashtable_find_insertion_entry_forwarded_string,             \
     "name_to_index_hashtable_find_insertion_entry_forwarded_string")           \
+  V(simple_name_dictionary_lookup_forwarded_string,                            \
+    "simple_name_dictionary_lookup_forwarded_string")                          \
+  V(simple_name_dictionary_find_insertion_entry_forwarded_string,              \
+    "simple_name_dictionary_find_insertion_entry_forwarded_string")            \
   IF_WASM(V, wasm_switch_stacks, "wasm_switch_stacks")                         \
   IF_WASM(V, wasm_return_switch, "wasm_return_switch")                         \
   IF_WASM(V, wasm_switch_to_the_central_stack,                                 \

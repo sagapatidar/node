@@ -634,6 +634,13 @@ class V8_EXPORT Isolate {
     kFloat16Array = 165,
     kExplicitResourceManagement = 166,
     kWasmBranchHinting = 167,
+    kWasmMultiValue = 168,
+    kUint8ArrayToFromBase64AndHex = 169,
+    kAtomicsPause = 170,
+    kTopLevelAwait = 171,
+    kLogicalAssignment = 172,
+    kNullishCoalescing = 173,
+    kInvalidatedNoDateTimeConfigurationChangeProtector = 174,
 
     // If you add new values here, you'll also need to update Chromium's:
     // web_feature.mojom, use_counter_callback.cc, and enums.xml. V8 changes to
@@ -944,6 +951,21 @@ class V8_EXPORT Isolate {
    * continuation runs.
    */
   void SetContinuationPreservedEmbedderData(Local<Value> data);
+
+  /**
+   * Returns the value set by `SetContinuationPreservedEmbedderDataV2()` or
+   * restored during microtask execution for the currently running continuation,
+   * if any. Returns undefiend if no continuation preserved embedder data was
+   * set.
+   */
+  Local<Data> GetContinuationPreservedEmbedderDataV2();
+
+  /**
+   * Sets a value that will be stored on continuations and restored while the
+   * continuation runs. If `data` is empty, the continuation preserved embedder
+   * data is set to undefined.
+   */
+  void SetContinuationPreservedEmbedderDataV2(Local<Data> data);
 
   /**
    * Get statistics about the heap memory usage.

@@ -44,6 +44,10 @@
   # All tests in the bug directory are expected to fail.
   'bugs/*': [FAIL],
 
+  # Temporal is temporarily disabled until we have enough of it reimplemented
+  # with ICU4X (b/42201538)
+  'temporal/*': [SKIP],
+
   ##############################################################################
   # Open bugs.
 
@@ -298,6 +302,7 @@
   'es6/block-conflicts-sloppy': [PASS, SLOW],
   'es6/block-conflicts': [PASS, SLOW],
   'es6/typedarray-of': [PASS, SLOW],
+  'compiler/inlining-exponential': [PASS, SLOW],
 }],  # mode == debug
 
 ['novfp3', {
@@ -335,6 +340,7 @@
   'wasm/atomics-stress': [SKIP],
   'wasm/atomics64-stress': [SKIP],
   'wasm/atomics-memory64': [SKIP],
+  'compiler/inlining-exponential': [SKIP],
   # Profiler test is flaky on simulators.
   'wasm/log-wasm-to-js-wrapper-callref': [SKIP],
   'wasm/log-wasm-to-js-wrapper-indirect': [SKIP],
@@ -1015,6 +1021,7 @@
   'additive-safe-int-feedback': [SKIP],
   'regress-398879933': [SKIP],
   'regress-399698534': [SKIP],
+  'regress-414738826': [SKIP],
 
   # Needs 64-bit number register support
   'compiler/fast-api-calls-64-bit-integer-values': [SKIP],
@@ -1653,6 +1660,9 @@
   'regress/regress-524': [PASS, ['asan', SKIP]],
   'wasm/max-wasm-functions': [PASS, ['asan', SKIP]],
   'wasm/user-properties-module': [PASS, ['asan', SKIP]],
+
+  # Too slow.
+  'wasm/futex': [SKIP],
 }],  # 'gc_fuzzer'
 
 ##############################################################################
@@ -2074,6 +2084,7 @@
   'additive-safe-int-feedback': [SKIP],
   'regress-398879933': [SKIP],
   'regress-399698534': [SKIP],
+  'regress-414738826': [SKIP],
   # Type assertions block the propagation of word64 truncation useinfo,
   # leading to differences in representation selection.
   'compiler/bigint-multiply-truncate': [SKIP],
@@ -2253,6 +2264,7 @@
   'wasm/deopt/deopt-untagged-parameters-s128': [SKIP],
   'wasm/deopt/deopt-value-types': [SKIP],
   'wasm/exceptions-simd': [SKIP],
+  'wasm/growable-stacks': [SKIP],
   'wasm/interleaved-loads': [SKIP],
   'wasm/js-to-js': [SKIP],
   'wasm/large-struct': [SKIP],
@@ -2261,6 +2273,7 @@
   'wasm/js-to-wasm-invalid-sig': [SKIP],
   'wasm/shuffles': [SKIP],
   'wasm/redundant-shuffle-lanes': [SKIP],
+  'wasm/shared-everything/atomic-instructions': [SKIP],
   'wasm/simd-*': [SKIP],
   'wasm/turboshaft/array-new-unreachable': [SKIP],
   'wasm/turboshaft/reduction-shuffle': [SKIP],
@@ -2366,6 +2379,7 @@
   # These tests rely on allocation site tracking which only works in the young generation.
   'array-constructor-feedback': [SKIP],
   'wasm/generic-wrapper': [SKIP],
+  'wasm/gc-casts-invalid': [SKIP],
   'regress/regress-trap-allocation-memento': [SKIP],
   'regress/regress-crbug-1151890': [SKIP],
   'regress/regress-crbug-1163184': [SKIP],
@@ -2624,6 +2638,7 @@
   'additive-safe-int-feedback': [SKIP],
   'regress-398879933': [SKIP],
   'regress-399698534': [SKIP],
+  'regress-414738826': [SKIP],
 }], # variant in (stress_maglev, stress_maglev_non_eager_inlining, stress_maglev_future, stress_maglev_no_turbofan, maglev_no_turbofan, turbolev)
 
 ##############################################################################
@@ -2781,11 +2796,11 @@
 }],  # cet_shadow_stack
 
 ##############################################################################
-['variant == conservative_pinning', {
+['variant == conservative_stack_scanning', {
   'regress/regress-12657': [SKIP],
   'regress/regress-678917': [SKIP],
   'maglev/regress-1407606': [SKIP],
-}],  # variant == conservative_pinning
+}],  # variant == conservative_stack_scanning
 
 ##############################################################################
 ['variant in [jit_fuzzing, jit_fuzzing_maglev]', {

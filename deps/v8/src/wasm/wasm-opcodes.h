@@ -766,6 +766,7 @@ V8_EXPORT_PRIVATE bool IsJSCompatibleSignature(const CanonicalSig* sig);
   V(RefI31, 0xfb1c, _, "ref.i31")                                              \
   V(I31GetS, 0xfb1d, _, "i31.get_s")                                           \
   V(I31GetU, 0xfb1e, _, "i31.get_u")                                           \
+  V(RefI31Shared, 0xfb1f, _, "ref.i31_shared")                                 \
   /* Custom Descriptors proposal */                                            \
   V(RefGetDesc, 0xfb22, _, "ref.get_desc")                                     \
   V(RefCastDesc, 0xfb23, _, "ref.cast_desc")                                   \
@@ -820,6 +821,15 @@ V8_EXPORT_PRIVATE bool IsJSCompatibleSignature(const CanonicalSig* sig);
   V(StringEncodeWtf8Array, 0xfbb7, _, "string.encode_wtf8_array")              \
   V(StringNewUtf8ArrayTry, 0xfbb8, _, "string.new_utf8_array_try")
 
+#define FOREACH_ATOMIC_GC_OPCODE(V) /*          Force 80 columns            */ \
+  V(StructAtomicGet, 0xfe5c, _, "struct.atomic.get")                           \
+  V(StructAtomicGetS, 0xfe5d, _, "struct.atomic.get_s")                        \
+  V(StructAtomicGetU, 0xfe5e, _, "struct.atomic.get_u")                        \
+  V(StructAtomicSet, 0xfe5f, _, "struct.atomic.set")                           \
+  V(ArrayAtomicGet, 0xfe67, _, "array.atomic.get")                             \
+  V(ArrayAtomicGetS, 0xfe68, _, "array.atomic.get_s")                          \
+  V(ArrayAtomicGetU, 0xfe69, _, "array.atomic.get_u")
+
 // All opcodes.
 #define FOREACH_OPCODE(V)            \
   FOREACH_CONTROL_OPCODE(V)          \
@@ -835,6 +845,7 @@ V8_EXPORT_PRIVATE bool IsJSCompatibleSignature(const CanonicalSig* sig);
   FOREACH_ATOMIC_0_OPERAND_OPCODE(V) \
   FOREACH_NUMERIC_OPCODE(V)          \
   FOREACH_GC_OPCODE(V)               \
+  FOREACH_ATOMIC_GC_OPCODE(V)        \
   FOREACH_WASMFX_OPCODE(V)
 
 // All signatures.

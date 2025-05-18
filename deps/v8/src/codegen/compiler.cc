@@ -746,7 +746,7 @@ void InstallUnoptimizedCode(UnoptimizedCompilationInfo* compilation_info,
 #if V8_ENABLE_WEBASSEMBLY
     DCHECK(compilation_info->has_asm_wasm_data());
     // We should only have asm/wasm data when finalizing on the main thread.
-    DCHECK((std::is_same<IsolateT, Isolate>::value));
+    DCHECK((std::is_same_v<IsolateT, Isolate>));
     shared_info->set_asm_wasm_data(*compilation_info->asm_wasm_data());
     shared_info->set_feedback_metadata(
         ReadOnlyRoots(isolate).empty_feedback_metadata(), kReleaseStore);
@@ -820,7 +820,7 @@ CompilationJob::Status FinalizeSingleUnoptimizedCompilationJob(
         job->time_taken_to_finalize());
   }
   DCHECK_IMPLIES(status == CompilationJob::RETRY_ON_MAIN_THREAD,
-                 (std::is_same<IsolateT, LocalIsolate>::value));
+                 (std::is_same_v<IsolateT, LocalIsolate>));
   return status;
 }
 
@@ -922,7 +922,7 @@ bool IterativelyExecuteAndFinalizeUnoptimizedCompilationJobs(
 
       case CompilationJob::RETRY_ON_MAIN_THREAD:
         // This should not happen on the main thread.
-        DCHECK((!std::is_same<IsolateT, Isolate>::value));
+        DCHECK((!std::is_same_v<IsolateT, Isolate>));
         DCHECK_NOT_NULL(jobs_to_retry_finalization_on_main_thread);
 
         // Clear the literal and ParseInfo to prevent further attempts to
@@ -998,7 +998,8 @@ class OptimizedCodeCache : public AllStatic {
       // Bytecode may be different, so make sure we're at a valid OSR entry.
       SBXCHECK(it.CurrentBytecodeIsValidOSREntry());
       std::optional<Tagged<Code>> maybe_code =
-          feedback_vector->GetOptimizedOsrCode(isolate, it.GetSlotOperand(2));
+          feedback_vector->GetOptimizedOsrCode(isolate, bytecode,
+                                               it.GetSlotOperand(2));
       if (maybe_code.has_value()) code = maybe_code.value();
     } else {
 #ifdef V8_ENABLE_LEAPTIERING

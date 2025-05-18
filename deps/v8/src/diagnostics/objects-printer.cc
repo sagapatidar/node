@@ -50,6 +50,20 @@ namespace v8::internal {
 
 namespace {
 constexpr char kUnavailableString[] = "unavailable";
+
+void PrintDouble(std::ostream& os, double val) {
+  if (i::IsMinusZero(val)) {
+    os << "-0.0";
+  } else if (val == DoubleToInteger(val) && val >= kMinSafeInteger &&
+             val <= kMaxSafeInteger) {
+    // Print integer HeapNumbers in safe integer range with max precision: as
+    // 9007199254740991.0 instead of 9.0072e+15
+    int64_t i = static_cast<int64_t>(val);
+    os << i << ".0";
+  } else {
+    os << val;
+  }
+}
 }  // namespace
 
 #ifdef OBJECT_PRINT
@@ -255,6 +269,9 @@ void HeapObject::HeapObjectPrint(std::ostream& os) {
       break;
     case HASH_TABLE_TYPE:
       Cast<ObjectHashTable>(*this)->ObjectHashTablePrint(os);
+      break;
+    case DOUBLE_STRING_CACHE_TYPE:
+      Cast<DoubleStringCache>(*this)->DoubleStringCachePrint(os);
       break;
     case NAME_TO_INDEX_HASH_TABLE_TYPE:
       Cast<NameToIndexHashTable>(*this)->NameToIndexHashTablePrint(os);
@@ -759,7 +776,7 @@ namespace {
 
 void JSObjectPrintHeader(std::ostream& os, Tagged<JSObject> obj,
                          const char* id) {
-  Isolate* isolate = obj->GetIsolate();
+  Isolate* isolate = Isolate::Current();
   obj->PrintHeader(os, id);
   // Don't call GetElementsKind, its validation code can cause the printer to
   // fail when debugging.
@@ -1684,6 +1701,20 @@ void FeedbackCell::FeedbackCellPrint(std::ostream& os) {
   os << "\n";
 }
 
+void DoubleStringCache::DoubleStringCachePrint(std::ostream& os) {
+  PrintHeader(os, "DoubleStringCache");
+  os << "\n - capacity: " << capacity();
+  for (InternalIndex entry_index : InternalIndex::Range(capacity())) {
+    auto& entry = entries()[entry_index.as_uint32()];
+    if (entry.value_.load() == kEmptySentinel) continue;
+
+    os << "\n       [" << entry_index.as_uint32() << "]: ";
+    PrintDouble(os, entry.key_.value());
+    os << " - " << Brief(entry.value_.load());
+  }
+  os << "\n";
+}
+
 void FeedbackVectorSpec::Print() {
   StdoutStream os;
 
@@ -1832,7 +1863,7 @@ void FeedbackNexus::Print(std::ostream& os) {
       if (ic_state() == InlineCacheState::MONOMORPHIC) {
         os << "\n   " << Brief(GetFeedback()) << ": ";
         if (GetFeedbackExtra().IsCleared()) {
-          os << " <cleared>\n";
+          os << " [cleared]\n";
           break;
         }
         Tagged<Object> handler = GetFeedbackExtra().GetHeapObjectOrSmi();
@@ -1852,7 +1883,12 @@ void FeedbackNexus::Print(std::ostream& os) {
         }
         for (int i = 0; i < array->length(); i += 2) {
           os << "\n   " << Brief(array->get(i)) << ": ";
-          LoadHandler::PrintHandler(array->get(i + 1).GetHeapObjectOrSmi(), os);
+          if (!array->get(i + 1).IsCleared()) {
+            LoadHandler::PrintHandler(array->get(i + 1).GetHeapObjectOrSmi(),
+                                      os);
+          } else {
+            os << "[cleared]\n";
+          }
         }
       }
       break;
@@ -2039,6 +2075,9 @@ static const char* const weekdays[] = {"???", "Sun", "Mon", "Tue",
 void JSDate::JSDatePrint(std::ostream& os) {
   JSObjectPrintHeader(os, *this, "JSDate");
   os << "\n - value: " << value();
+  os << "\n - cache_stamp: " << cache_stamp()
+     << " (vs. Isolate::date_time_stamp: "
+     << Brief(Isolate::Current()->date_cache_stamp()) << ")";
   if (!IsSmi(year())) {
     os << "\n - time = NaN\n";
   } else {
@@ -2581,6 +2620,10 @@ void Code::CodePrint(std::ostream& os, const char* name, Address current_pc) {
        << Brief(istream->relocation_info());
     os << "\n - instruction_stream.body_size: " << istream->body_size();
   }
+#ifdef V8_ENABLE_LEAPTIERING
+  os << "\n - dispatch_handle: 0x" << std::hex << js_dispatch_handle()
+     << std::dec;
+#endif  // V8_ENABLE_LEAPTIERING
   os << "\n";
 
   // Finally, the disassembly:
@@ -2709,7 +2752,7 @@ void WasmStruct::WasmStructPrint(std::ostream& os) {
       wasm::GetTypeCanonicalizer()->LookupStruct(
           map()->wasm_type_info()->type_index());
   if (struct_type->is_descriptor()) {
-    os << "\n - describes RTT: " << Brief(get_described_rtt());
+    os << "\n - describes RTT: " << Brief(described_rtt());
   }
   os << "\n - fields (" << struct_type->field_count() << "):";
   for (uint32_t i = 0; i < struct_type->field_count(); i++) {
@@ -2868,6 +2911,12 @@ void WasmSuspendingObject::WasmSuspendingObjectPrint(std::ostream& os) {
   os << "\n";
 }
 
+void WasmContinuationObject::WasmContinuationObjectPrint(std::ostream& os) {
+  PrintHeader(os, "WasmContinuationObject");
+  os << "\n - stack: " << (stack() == nullptr ? -1 : stack()->id());
+  os << "\n";
+}
+
 void WasmInstanceObject::WasmInstanceObjectPrint(std::ostream& os) {
   IsolateForSandbox isolate = GetIsolateForSandbox(*this);
   JSObjectPrintHeader(os, *this, "WasmInstanceObject");
@@ -2968,8 +3017,10 @@ void WasmExportedFunctionData::WasmExportedFunctionDataPrint(std::ostream& os) {
   WasmFunctionDataPrint(os);
   os << "\n - instance_data: " << Brief(instance_data());
   os << "\n - function_index: " << function_index();
-  os << "\n - signature: " << reinterpret_cast<const void*>(sig());
   os << "\n - wrapper_budget: " << wrapper_budget()->value();
+  os << "\n - canonical_type_index: " << canonical_type_index();
+  os << "\n - receiver_is_first_param: " << receiver_is_first_param();
+  os << "\n - signature: " << reinterpret_cast<const void*>(sig());
   os << "\n";
 }
 
@@ -3208,6 +3259,7 @@ void Script::ScriptPrint(std::ostream& os) {
   os << "\n";
 }
 
+#ifdef V8_TEMPORAL_SUPPORT
 void JSTemporalPlainDate::JSTemporalPlainDatePrint(std::ostream& os) {
   JSObjectPrintHeader(os, *this, "JSTemporalPlainDate");
   JSObjectPrintBody(os, *this);
@@ -3253,10 +3305,7 @@ void JSTemporalTimeZone::JSTemporalTimeZonePrint(std::ostream& os) {
   JSObjectPrintBody(os, *this);
 }
 
-void JSTemporalCalendar::JSTemporalCalendarPrint(std::ostream& os) {
-  JSObjectPrintHeader(os, *this, "JSTemporalCalendar");
-  JSObjectPrintBody(os, *this);
-}
+#endif  // V8_TEMPORAL_SUPPORT
 
 void JSRawJson::JSRawJsonPrint(std::ostream& os) {
   JSObjectPrintHeader(os, *this, "JSRawJson");
@@ -3889,18 +3938,7 @@ void HeapObject::HeapObjectShortPrint(std::ostream& os) {
 }
 
 void HeapNumber::HeapNumberShortPrint(std::ostream& os) {
-  double val = value();
-  if (i::IsMinusZero(val)) {
-    os << "-0.0";
-  } else if (val == DoubleToInteger(val) && val >= kMinSafeInteger &&
-             val <= kMaxSafeInteger) {
-    // Print integer HeapNumbers in safe integer range with max precision: as
-    // 9007199254740991.0 instead of 9.0072e+15
-    int64_t i = static_cast<int64_t>(val);
-    os << i << ".0";
-  } else {
-    os << val;
-  }
+  PrintDouble(os, value());
 }
 
 // TODO(cbruni): remove once the new maptracer is in place.

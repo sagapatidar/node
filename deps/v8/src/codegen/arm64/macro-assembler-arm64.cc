@@ -3358,7 +3358,7 @@ void MacroAssembler::LeaveExitFrame(const Register& scratch,
 
   if (v8_flags.debug_code) {
     // Also emit debug code to clear the cp in the top frame.
-    Mov(scratch2, Operand(Context::kInvalidContext));
+    Mov(scratch2, Operand(Context::kNoContext));
     Mov(scratch, ExternalReference::Create(IsolateAddressId::kContextAddress,
                                            isolate()));
     Str(scratch2, MemOperand(scratch));
@@ -3743,13 +3743,13 @@ void MacroAssembler::DecompressTagged(const Register& destination,
                                       const MemOperand& field_operand) {
   ASM_CODE_COMMENT(this);
   Ldr(destination.W(), field_operand);
-  Add(destination, kPtrComprCageBaseRegister, destination);
+  Orr(destination, kPtrComprCageBaseRegister, destination);
 }
 
 void MacroAssembler::DecompressTagged(const Register& destination,
                                       const Register& source) {
   ASM_CODE_COMMENT(this);
-  Add(destination, kPtrComprCageBaseRegister, Operand(source, UXTW));
+  Orr(destination, kPtrComprCageBaseRegister, Operand(source, UXTW));
 }
 
 void MacroAssembler::DecompressTagged(const Register& destination,
@@ -3797,14 +3797,16 @@ void MacroAssembler::AtomicDecompressTaggedSigned(const Register& destination,
   }
 }
 
-void MacroAssembler::AtomicDecompressTagged(const Register& destination,
-                                            const Register& base,
-                                            const Register& index,
-                                            const Register& temp) {
+int MacroAssembler::AtomicDecompressTagged(const Register& destination,
+                                           const Register& base,
+                                           const Register& index,
+                                           const Register& temp) {
   ASM_CODE_COMMENT(this);
   Add(temp, base, index);
+  int pc_offset_of_load = pc_offset();
   Ldar(destination.W(), temp);
   Add(destination, kPtrComprCageBaseRegister, destination);
+  return pc_offset_of_load;
 }
 
 void MacroAssembler::CheckPageFlag(const Register& object, int mask,
@@ -4128,7 +4130,8 @@ void MacroAssembler::LoadEntrypointFromJSDispatchTable(Register destination,
   ASM_CODE_COMMENT(this);
 
   Register index = destination;
-  Mov(scratch, ExternalReference::js_dispatch_table_address());
+  CHECK(root_array_available());
+  Ldr(scratch, ExternalReferenceAsOperand(IsolateFieldId::kJSDispatchTable));
   Mov(index, Operand(dispatch_handle, LSR, kJSDispatchHandleShift));
   Add(scratch, scratch, Operand(index, LSL, kJSDispatchTableEntrySizeLog2));
   Ldr(destination, MemOperand(scratch, JSDispatchEntry::kEntrypointOffset));
@@ -4139,7 +4142,8 @@ void MacroAssembler::LoadEntrypointFromJSDispatchTable(
   DCHECK(!AreAliased(destination, scratch));
   ASM_CODE_COMMENT(this);
 
-  Mov(scratch, ExternalReference::js_dispatch_table_address());
+  CHECK(root_array_available());
+  Ldr(scratch, ExternalReferenceAsOperand(IsolateFieldId::kJSDispatchTable));
   // WARNING: This offset calculation is only safe if we have already stored a
   // RelocInfo for the dispatch handle, e.g. in CallJSDispatchEntry, (thus
   // keeping the dispatch entry alive) _and_ because the entrypoints are not
@@ -4158,7 +4162,8 @@ void MacroAssembler::LoadParameterCountFromJSDispatchTable(
   ASM_CODE_COMMENT(this);
 
   Register index = destination;
-  Mov(scratch, ExternalReference::js_dispatch_table_address());
+  CHECK(root_array_available());
+  Ldr(scratch, ExternalReferenceAsOperand(IsolateFieldId::kJSDispatchTable));
   Mov(index, Operand(dispatch_handle, LSR, kJSDispatchHandleShift));
   Add(scratch, scratch, Operand(index, LSL, kJSDispatchTableEntrySizeLog2));
   static_assert(JSDispatchEntry::kParameterCountMask == 0xffff);
@@ -4172,7 +4177,8 @@ void MacroAssembler::LoadEntrypointAndParameterCountFromJSDispatchTable(
   ASM_CODE_COMMENT(this);
 
   Register index = parameter_count;
-  Mov(scratch, ExternalReference::js_dispatch_table_address());
+  CHECK(root_array_available());
+  Ldr(scratch, ExternalReferenceAsOperand(IsolateFieldId::kJSDispatchTable));
   Mov(index, Operand(dispatch_handle, LSR, kJSDispatchHandleShift));
   Add(scratch, scratch, Operand(index, LSL, kJSDispatchTableEntrySizeLog2));
   Ldr(entrypoint, MemOperand(scratch, JSDispatchEntry::kEntrypointOffset));

@@ -376,7 +376,8 @@ void MacroAssembler::LoadEntrypointFromJSDispatchTable(Register destination,
   DCHECK(!AreAliased(destination, dispatch_handle, scratch));
   ASM_CODE_COMMENT(this);
 
-  Move(scratch, ExternalReference::js_dispatch_table_address());
+  CHECK(root_array_available());
+  ldr(scratch, ExternalReferenceAsOperand(IsolateFieldId::kJSDispatchTable));
   static_assert(kJSDispatchHandleShift == 0);
   add(scratch, scratch,
       Operand(dispatch_handle, LSL, kJSDispatchTableEntrySizeLog2));
@@ -1628,7 +1629,7 @@ void MacroAssembler::LeaveExitFrame(Register scratch) {
   ER context_address = ER::Create(IsolateAddressId::kContextAddress, isolate());
   ldr(cp, ExternalReferenceAsOperand(context_address, no_reg));
 #ifdef DEBUG
-  mov(scratch, Operand(Context::kInvalidContext));
+  mov(scratch, Operand(Context::kNoContext));
   str(scratch, ExternalReferenceAsOperand(context_address, no_reg));
 #endif
 
